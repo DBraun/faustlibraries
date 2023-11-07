@@ -60,6 +60,8 @@ ba = library("basics.lib");
 en = library("envelopes.lib");
 ma = library("maths.lib");
 os = library("oscillators.lib");
+no = library("noises.lib");
+it = library("interpolators.lib");
 
 declare version "2.0.0";
 
@@ -317,7 +319,7 @@ dx7_op(mode,freqCoarse,freqFine,detune,outLev,R1,R2,R3,R4,L1,L2,L3,L4,lfoWave,lf
 (en.dx7envelope(egr1,egr2,egr3,egr4,egl1,egl2,egl3,egl4,gate) : envTable)*sineWave
 with{
 
-  freq = select2(mode,freq_ratio*base_freq*ba.semi2ratio(detune),freq_fixed) // todo: check this
+  freq = select2(mode,freq_ratio*base_freq*ba.semi2ratio(detune+lfoDetune),freq_fixed) // todo: check this
   with {
     freq_ratio = rdtable(FreqTableCoarse_ratio, freqCoarse)*rdtable(FreqTableFine_ratio, freqFine);
     freq_fixed = rdtable(FreqTableCoarse_fixed, freqCoarse)*rdtable(FreqTableFine_fixed, freqFine);
@@ -375,9 +377,38 @@ with{
   };
 
   tablesize = 1 << 16;
+  
+  // todo: the interaction between lfoDelay and lfoSync is ambiguous.
+  lfo = lfo_tri, lfo_sawdown, lfo_sawup, lfo_square, lfo_sine, lfo_sh : ba.selectn(6, lfoWave)
+  with {
+    lfoTableSize = 1 << 16;
+
+    hold_timer = 1 : (+~(*(ba.if(gate-gate',0,1))));
+
+    lfoFreq = lfoSpeed : it.remap(0, 99, 1, 50); // todo: remap to "under 1 hz to about 50 Hz" according to official DX7 manual.
+    phasor = os.hs_phasor(lfoTableSize,lfoFreq, (lfoDelaySamples >= hold_timer) | (lfoSync & (ba.impulsify(gate))))
+    with {
+      lfoDelaySamples = lfoDelay * (.5 * ma.SR / 99); // todo: don't know how to scale, so set max to 0.5 seconds
+    };
+
+    lfo_tri = rdtable(lfoTableSize, triwaveform, phasor)
+    with {
+        triwaveform = 2*abs((ba.period(lfoTableSize)*2/lfoTableSize-1))-1;
+    };
+    lfo_sawdown = -1.*lfo_sawup;
+    lfo_sawup = (phasor/lfoTableSize)*2-1;
+    lfo_square = select2((phasor/lfoTableSize)>0.5,-1,1);
+    lfo_sine = rdtable(lfoTableSize, os.sinwaveform(lfoTableSize), phasor);
+    lfo_sh = no.lfnoise0(lfoFreq); // "random output" according to official DX7 manual
+  };
+
+  lfoDetune = lfo * lfoPMD * (12 / 99); // todo: it currently detunes to plus/minus 12 semitones when lfoPMD is maxed at 99
+
+  lfoGain = lfo : it.remap(-1, 1, 1.-lfoAMD/99, 1); // todo:
+  
   // phase modulation, not freq modulation
   sineWave = rdtable(tablesize, os.sinwaveform(tablesize), ma.modulo(int(os.phasor(tablesize,freq) + phaseMod*tablesize),tablesize));
-  amp = outLev/99; // the corresponding "CSOUND table" has just been hardcoded here
+  amp = outLev/99 : _*lfoGain; // the corresponding "CSOUND table" has just been hardcoded here
   // computing levels
   vFac = keyVel : dx7_velsensf;
   egl1 = L1*amp <: *(1-vFac) + *(vFac*gain);
