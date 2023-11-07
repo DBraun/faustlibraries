@@ -979,6 +979,19 @@ with{
   lfoAMD = nentry("v:global/h:[2]LFO/[4]AMD",0,0,99,1);
   lfoSync = nentry("v:global/h:[2]LFO/[5]Sync",0,0,1,1);
 
+  // todo: use these:
+  LF_PT_MOD_SNS = nentry("v:global/[5]LF_PT_MOD_SNS",1,0,7,1);
+  OSC_KEY_SYNC = nentry("v:global/[5]OSC_KEY_SYNC",1,0,1,1);
+  pitch_egL1 = nentry("v:global/h:[3]Pitch EG/[0]L1",0,0,99,1);
+  pitch_egL2 = nentry("v:global/h:[3]Pitch EG/[1]L2",0,0,99,1);
+  pitch_egL3 = nentry("v:global/h:[3]Pitch EG/[2]L3",0,0,99,1);
+  pitch_egL4 = nentry("v:global/h:[3]Pitch EG/[3]L4",0,0,99,1);
+  pitch_egR1 = nentry("v:global/h:[3]Pitch EG/[4]R1",0,0,99,1);
+  pitch_egR2 = nentry("v:global/h:[3]Pitch EG/[5]R2",0,0,99,1);
+  pitch_egR3 = nentry("v:global/h:[3]Pitch EG/[6]R3",0,0,99,1);
+  pitch_egR4 = nentry("v:global/h:[3]Pitch EG/[7]R4",0,0,99,1);
+  transpose = nentry("v:global/transpose",0,0,48,1);
+
   freq = hslider("v:global/[3]freq",400,50,1000,0.01);
   gain = hslider("v:global/[4]gain",0.8,0,1,0.01);
   gate = button("v:global/[5]gate");
