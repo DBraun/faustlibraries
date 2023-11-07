@@ -258,6 +258,22 @@ dx7_eglv2peakf = dx7_eglv2peak_func;
 // Corresponds to F10 in the CSOUND implementation
 dx7_velsensf = /(8);
 
+//----------------------`(dx.)dx7_fdbkscalef`--------------------------
+// DX7 feedback scaling conversion function.
+//
+// #### Usage:
+//
+// ```
+// dx7Feedback  : dx7_fdbkscalef : _
+// ```
+//
+// Where:
+//
+// * `dx7Feedback`: DX7 feedback value
+//-----------------------------------------------------------
+// Corresponds to F11 in the CSOUND implementation
+dx7_fdbkscalef = *(0.875);
+
 //------------------------------`(dx.)dx7_op`---------------------------
 // DX7 Operator. Implements a phase-modulable sine wave oscillator connected
 // to a DX7 envelope generator.
@@ -923,7 +939,7 @@ dx7_ui = hgroup("dx7",
 )
 with{
   algorithm = nentry("v:global/[0]algorithm",0,0,31,1) : int;
-  feedback = nentry("v:global/[1]feedback",0,0,7,1) * 99 * .875 /(7*2*ma.PI); // todo: what's the scale factor here
+  feedback = nentry("v:global/[1]feedback",0,0,7,1) : dx7_fdbkscalef/(2*ma.PI);
 
   lfoWave = nentry("v:global/h:[2]LFO/[0]Wave",0,0,5,1); // (triangle, saw down, saw up, square, sine, sample&hold)
   lfoSpeed = nentry("v:global/h:[2]LFO/[1]Speed",0,0,99,1);
