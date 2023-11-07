@@ -52,6 +52,7 @@ closed source license or any other license if you decide so.
 /*
 TODO:
   * LFO not implemented yet
+  * Fix or better justify hard-coded values related to feedback
   * The whole system needs some tuning
 */
 
@@ -60,7 +61,7 @@ en = library("envelopes.lib");
 ma = library("maths.lib");
 os = library("oscillators.lib");
 
-declare version "1.1.0";
+declare version "2.0.0";
 
 //----------------------`(dx.)dx7_ampf`--------------------------
 // DX7 amplitude conversion function. 3 versions of this function
@@ -257,22 +258,6 @@ dx7_eglv2peakf = dx7_eglv2peak_func;
 // Corresponds to F10 in the CSOUND implementation
 dx7_velsensf = /(8);
 
-//----------------------`(dx.)dx7_fdbkscalef`--------------------------
-// DX7 feedback scaling conversion function.
-//
-// #### Usage:
-//
-// ```
-// dx7Feedback  : dx7_fdbkscalef : _
-// ```
-//
-// Where:
-//
-// * `dx7Feedback`: DX7 feedback value
-//-----------------------------------------------------------
-// Corresponds to F11 in the CSOUND implementation
-dx7_fdbkscalef = *(0.875);
-
 //------------------------------`(dx.)dx7_op`---------------------------
 // DX7 Operator. Implements a phase-modulable sine wave oscillator connected
 // to a DX7 envelope generator.
@@ -280,13 +265,15 @@ dx7_fdbkscalef = *(0.875);
 // #### Usage:
 //
 // ```
-// dx7_op(freq,phaseMod,outLev,R1,R2,R3,R4,L1,L2,L3,L4,keyVel,rateScale,type,gain,gate) : _
+// dx7_op(mode,freqCoarse,freqFine,detune,outLev,R1,R2,R3,R4,L1,L2,L3,L4,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVel,rateScale,phaseMod,type,base_freq,gain,gate) : _
 // ```
 //
 // Where:
 //
-// * `freq`: frequency of the oscillator
-// * `phaseMod`: phase deviation (-1 - 1)
+// * `mode`: pitch mode (0=ratio; 1=fixed)
+// * `freqCoarse`: coarse frequency (0-31)
+// * `freqFine`: fine frequency (0-99)
+// * `detune`: detune in semitones (-7 - 7)
 // * `outLev`: preset output level (0-99)
 // * `R1`: preset envelope rate 1 (0-99)
 // * `R2`: preset envelope rate 2 (0-99)
@@ -296,15 +283,81 @@ dx7_fdbkscalef = *(0.875);
 // * `L2`: preset envelope level 2 (0-99)
 // * `L3`: preset envelope level 3 (0-99)
 // * `L4`: preset envelope level 4 (0-99)
-// * `keyVel`: preset key velocity sensitivity (0-99)
-// * `rateScale`: preset envelope rate scale
-// * `type`: preset operator type
+// * `lfoWave`: LFO wave mode (0-5) (triangle, saw down, saw up, square, sine, sample&hold)
+// * `lfoSpeed`: LFO speed (0-99)
+// * `lfoDelay`: LFO delay (0-99)
+// * `lfoPMD`: LFO pitch modulation depth (0-99)
+// * `lfoAMD`: LFO amplitude modulation depth (0-99)
+// * `lfoSync`: (0-1) (0=no retrigger; 1=retrigger)
+// * `keyVel`: preset key velocity sensitivity (0-7)
+// * `rateScale`: preset envelope rate scale (0-7)
+// * `phaseMod`: phase deviation (-1 - 1)
+// * `type`: preset operator type (0-1)
+// * `base_freq`: frequency of the oscillator
 // * `gain`: general gain
 // * `gate`: trigger signal
 //-----------------------------------------------------------------
-dx7_op(freq,phaseMod,outLev,R1,R2,R3,R4,L1,L2,L3,L4,keyVel,rateScale,type,gain,gate) =
+dx7_op(mode,freqCoarse,freqFine,detune,outLev,R1,R2,R3,R4,L1,L2,L3,L4,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVel,rateScale,phaseMod,type,base_freq,gain,gate) =
 (en.dx7envelope(egr1,egr2,egr3,egr4,egl1,egl2,egl3,egl4,gate) : envTable)*sineWave
 with{
+
+  freq = select2(mode,freq_ratio*base_freq*ba.semi2ratio(detune),freq_fixed) // todo: check this
+  with {
+    freq_ratio = rdtable(FreqTableCoarse_ratio, freqCoarse)*rdtable(FreqTableFine_ratio, freqFine);
+    freq_fixed = rdtable(FreqTableCoarse_fixed, freqCoarse)*rdtable(FreqTableFine_fixed, freqFine);
+
+    FreqTableCoarse_ratio = waveform{
+      0.5,1,2,3,4,5,6,7,8,9,10,11,12,13,
+      14,15,16,17,18,19,20,21,22,23,24,
+      25,26,27,28,29,30,31
+    };
+
+    FreqTableCoarse_fixed = waveform{
+      1,10,100,1000,1,10,100,1000,1,10,
+      100,1000,1,10,100,1000,1,10,100,
+      1000,1,10,100,1000,1,10,100,1000,
+      1,10,100,1000
+    };
+
+    FreqTableFine_ratio = waveform{
+    1.00,1.01,1.02,1.03,1.04,1.05,1.06,
+      1.07,1.08,1.09,1.10,1.11,1.12,1.13,
+      1.14,1.15,1.16,1.17,1.18,1.19,1.20,
+      1.21,1.22,1.23,1.24,1.25,1.26,1.27,
+      1.28,1.29,1.30,1.31,1.32,1.33,1.34,
+      1.35,1.36,1.37,1.38,1.39,1.40,1.41,
+      1.42,1.43,1.44,1.45,1.46,1.47,1.48,
+      1.49,1.50,1.51,1.52,1.53,1.54,1.55,
+      1.56,1.57,1.58,1.59,1.60,1.61,1.62,
+      1.63,1.64,1.65,1.66,1.67,1.68,1.69,
+      1.70,1.71,1.72,1.73,1.74,1.75,1.76,
+      1.77,1.78,1.79,1.80,1.81,1.82,1.83,
+      1.84,1.85,1.86,1.87,1.88,1.89,1.90,
+      1.91,1.92,1.93,1.94,1.95,1.96,1.97,
+      1.98,1.99
+    };
+
+    FreqTableFine_fixed = waveform{
+      1.000,1.023,1.047,1.072,1.096,1.122,
+      1.148,1.175,1.202,1.230,1.259,1.288,
+      1.318,1.349,1.380,1.413,1.445,1.479,
+      1.514,1.549,1.585,1.622,1.660,1.698,
+      1.738,1.778,1.820,1.862,1.905,1.950,
+      1.995,2.042,2.089,2.138,2.188,2.239,
+      2.291,2.344,2.399,2.455,2.512,2.570,
+      2.630,2.692,2.716,2.818,2.884,2.951,
+      3.020,3.090,3.162,3.236,3.311,3.388,
+      3.467,3.548,3.631,3.715,3.802,3.890,
+      3.981,4.074,4.169,4.266,4.365,4.467,
+      4.571,4.677,4.786,4.898,5.012,5.129,
+      5.248,5.370,5.495,5.623,5.754,5.888,
+      6.026,6.166,6.310,6.457,6.607,6.761,
+      6.918,7.079,7.244,7.413,7.586,7.762,
+      7.943,8.128,8.318,8.511,8.718,8.913,
+      9.120,9.333,9.550,9.772
+    };
+  };
+
   tablesize = 1 << 16;
   // phase modulation, not freq modulation
   sineWave = rdtable(tablesize, os.sinwaveform(tablesize), ma.modulo(int(os.phasor(tablesize,freq) + phaseMod*tablesize),tablesize));
@@ -347,7 +400,7 @@ with{
 // #### Usage:
 //
 // ```
-// dx7_algo(algN,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) : _
+// dx7_algo(algN,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) : _
 // ```
 //
 // Where:
@@ -362,13 +415,14 @@ with{
 // * `egL3`: preset envelope levels 3 (a list of 6 values between 0-99)
 // * `egL4`: preset envelope levels 4 (a list of 6 values between 0-99)
 // * `outLev`: preset output levels (a list of 6 values between 0-99)
-// * `keyVel`: preset key velocity sensitivities (a list of 6 values between 0-99)
-// * `ampModSens`: preset amplitude sensitivities (a list of 6 values between 0-99)
+// * `keyVel`: preset key velocity sensitivities (a list of 6 values between 0-7)
+// * `ampModSens`: preset amplitude sensitivities (a list of 6 values between 0-3)
 // * `opMode`: preset operator mode (a list of 6 values between 0-1)
-// * `opFreq`: preset operator frequencies (a list of 6 values between 0-99)
+// * `opFreqCoarse`: preset operator frequencies (a list of 6 values between 0-31)
+// * `opFreqFine`: preset operator frequencies (a list of 6 values between 0-99)
 // * `opDetune`: preset operator detuning (a list of 6 values between 0-99)
-// * `opRateScale`: preset operator rate scale (a list of 6 values between 0-99)
-// * `feedback`: preset operator feedback (a list of 6 values between 0-99)
+// * `opRateScale`: preset operator rate scale (a list of 6 values between 0-7)
+// * `feedback`: preset operator feedback
 // * `lfoDelay`: preset LFO delay (a list of 6 values between 0-99)
 // * `lfoDepth`: preset LFO depth (a list of 6 values between 0-99)
 // * `lfoSpeed`: preset LFO speed (a list of 6 values between 0-99)
@@ -380,605 +434,477 @@ with{
 // Alg 1
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(0,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(0,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2 : op1),(op6~*(feedback*.2) : op5 : op4 : op3) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, _, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 2
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(1,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(1,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2~*(feedback*.2) : op1),(op6 : op5 : op4 : op3) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, _, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 3
 // Note: weird rand and delay implemented in the csound orchestra and not
 // really sure why...
-dx7_algo(2,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(2,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op3 : op2 : op1),(op6~*(feedback) : op5 : op4) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, 0, 1);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 4
-dx7_algo(3,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(3,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op3 : op2 : op1),(op6 : op5 : op4)~*(feedback) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, 0, 1);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 5
 // NOTE: the .1 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(4,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(4,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2 : op1),(op4 : op3),(op6~*(feedback*.1) : op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 6
-dx7_algo(5,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(5,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2 : op1),(op4 : op3),(op6 : op5)~*(feedback) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 7
-dx7_algo(6,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(6,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2 : op1),(op4,(op6~*(feedback) : op5) :> op3) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 8
 // NOTE: the .1 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(7,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(7,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2 : op1),(op4~*(feedback*.1),(op6 : op5) :> op3) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, _, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 9
 // NOTE: the .4 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(8,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(8,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2~*(feedback*.4) : op1),(op4,(op6 : op5) :> op3) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 10
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(9,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(9,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op5,op6 :> op4),(op3~*(feedback*.2) : op2 : op1) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, _, 1);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 11
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(10,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(10,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op5,op6~*(feedback*.2) :> op4),(op3 : op2 : op1) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, 0, 1);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 12
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(11,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(11,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op4,op5,op6 :> op3),(op2~*(feedback*.2) : op1) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 13
-dx7_algo(12,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(12,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op4,op5,op6~*(feedback) :> op3),(op2 : op1) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 14
-dx7_algo(13,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(13,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2 : op1),(op5,op6~*(feedback) :> op4 : op3) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, _, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 15
 // NOTE: the .4 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(14,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(14,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2~*(feedback*.4) : op1),(op5,op6 :> op4 : op3) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, _, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 16
-dx7_algo(15,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(15,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op2,(op4 : op3),(op6~*(feedback) : op5) :> op1
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 1);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 17
 // NOTE: the .5 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(16,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(16,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op2~*(feedback*.5),(op4 : op3),(op6 : op5) :> op1
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 1);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 18
-dx7_algo(17,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(17,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op2,op3~*(feedback),(op6 : op5 : op4) :> op1
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, _, 1);
+  op3 = make_dx7_op(2, _, 1);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 19
 // NOTE: the .4 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(18,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(18,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op3 : op2 : op1),(op6~*(feedback*.4) <: op4,op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, 0, 1);
+  op2 = make_dx7_op(1, _, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 20
-dx7_algo(19,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(19,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op3~*(feedback) <: op1,op2),(op5,op6 :> op4) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, _, 1);
+  op2 = make_dx7_op(1, _, 0);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 21
-dx7_algo(20,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(20,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op3~*(feedback) <: op1,op2),(op6 <: op4,op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, _, 1);
+  op2 = make_dx7_op(1, _, 0);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 22
 // NOTE: the .1 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(21,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(21,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2 : op1),(op6~*(feedback*.1) <: op3,op4,op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, _, 1);
+  op2 = make_dx7_op(1, 0, 0);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 23
-dx7_algo(22,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(22,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,(op3 : op2),(op6~*(feedback) <: op4,op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, 0, 1);
+  op2 = make_dx7_op(1, _, 0);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 24
 // NOTE: the .6 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
-dx7_algo(23,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(23,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,op2,(op6~*(feedback*.6) <: op3,op4,op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 0);
+  op1 = make_dx7_op(0, 0, 0);
 };
 
 // Alg 25
-dx7_algo(24,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(24,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,op2,op3,(op6~*(feedback) <: op4,op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, 0, 0);
+  op2 = make_dx7_op(1, 0, 0);
+  op1 = make_dx7_op(0, 0, 0);
 };
 
 // Alg 26
-dx7_algo(25,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(25,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,(op3 : op2),(op5,op6~*(feedback) :> op4) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, 0, 1);
+  op2 = make_dx7_op(1, _, 0);
+  op1 = make_dx7_op(0, 0, 0);
 };
 
 // Alg 27
-dx7_algo(26,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(26,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,(op3~*(feedback) : op2),(op5,op6 :> op4) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),1,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,_,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 1);
+  op5 = make_dx7_op(4, 0, 1);
+  op4 = make_dx7_op(3, _, 0);
+  op3 = make_dx7_op(2, _, 1);
+  op2 = make_dx7_op(1, _, 0);
+  op1 = make_dx7_op(0, 0, 0);
 };
 
 // Alg 28
-dx7_algo(27,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(27,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 (op2 : op1),(op5~*(feedback) : op4 : op3),op6 :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),0,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),1,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,_,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 0);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, _, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 1);
+  op1 = make_dx7_op(0, _, 0);
 };
 
 // Alg 29
-dx7_algo(28,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(28,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,op2,(op4 : op3),(op6~*(feedback) : op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, 0, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 0);
+  op1 = make_dx7_op(0, 0, 0);
 };
 
 // Alg 30
-dx7_algo(29,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(29,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,op2,(op5~*(feedback) : op4 : op3),op6 :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),0,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),1,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,_,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),1,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,_,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 0);
+  op5 = make_dx7_op(4, _, 1);
+  op4 = make_dx7_op(3, _, 1);
+  op3 = make_dx7_op(2, _, 0);
+  op2 = make_dx7_op(1, 0, 0);
+  op1 = make_dx7_op(0, 0, 0);
 };
 
 // Alg 31
-dx7_algo(30,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(30,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,op2,op3,op4,(op6~*(feedback) : op5) :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,_,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),1,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,_,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, _, 1);
+  op5 = make_dx7_op(4, _, 0);
+  op4 = make_dx7_op(3, 0, 0);
+  op3 = make_dx7_op(2, 0, 0);
+  op2 = make_dx7_op(1, 0, 0);
+  op1 = make_dx7_op(0, 0, 0);
 };
 
 // Alg 32
-dx7_algo(31,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) =
+dx7_algo(31,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) =
 op1,op2,op3,op4,op5,op6 :> _
 with{
-  op6Freq = select2(opMode(5),opFreq(5)*freq,opFreq(5)) + opDetune(5)/4;
-  op6 = dx7_op(op6Freq,0,outLevel(5),egR1(5),egR2(5),egR3(5),egR4(5),egL1(5),egL2(5),egL3(5),egL4(5),keyVelSens(5),opRateScale(5),0,gain,gate);
-  op5Freq = select2(opMode(4),opFreq(4)*freq,opFreq(4)) + opDetune(4)/4;
-  op5 = dx7_op(op5Freq,0,outLevel(4),egR1(4),egR2(4),egR3(4),egR4(4),egL1(4),egL2(4),egL3(4),egL4(4),keyVelSens(4),opRateScale(4),0,gain,gate);
-  op4Freq = select2(opMode(3),opFreq(3)*freq,opFreq(3)) + opDetune(3)/4;
-  op4 = dx7_op(op4Freq,0,outLevel(3),egR1(3),egR2(3),egR3(3),egR4(3),egL1(3),egL2(3),egL3(3),egL4(3),keyVelSens(3),opRateScale(3),0,gain,gate);
-  op3Freq = select2(opMode(2),opFreq(2)*freq,opFreq(2)) + opDetune(2)/4;
-  op3 = dx7_op(op3Freq,0,outLevel(2),egR1(2),egR2(2),egR3(2),egR4(2),egL1(2),egL2(2),egL3(2),egL4(2),keyVelSens(2),opRateScale(2),0,gain,gate);
-  op2Freq = select2(opMode(1),opFreq(1)*freq,opFreq(1)) + opDetune(1)/4;
-  op2 = dx7_op(op2Freq,0,outLevel(1),egR1(1),egR2(1),egR3(1),egR4(1),egL1(1),egL2(1),egL3(1),egL4(1),keyVelSens(1),opRateScale(1),0,gain,gate);
-  op1Freq = select2(opMode(0),opFreq(0)*freq,opFreq(0)) + opDetune(0)/4;
-  op1 = dx7_op(op1Freq,0,outLevel(0),egR1(0),egR2(0),egR3(0),egR4(0),egL1(0),egL2(0),egL3(0),egL4(0),keyVelSens(0),opRateScale(0),0,gain,gate);
+  make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,keyVelSens(i),opRateScale(i),phase_mod,type,freq,gain,gate);
+
+  op6 = make_dx7_op(5, 0, 0);
+  op5 = make_dx7_op(4, 0, 0);
+  op4 = make_dx7_op(3, 0, 0);
+  op3 = make_dx7_op(2, 0, 0);
+  op2 = make_dx7_op(1, 0, 0);
+  op1 = make_dx7_op(0, 0, 0);
 };
 
 //------------------------------`(dx.)dx7_ui`---------------------------
@@ -992,45 +918,54 @@ with{
 // dx7_ui : _
 // ```
 //-----------------------------------------------------------------
-dx7_ui =
-par(i,32,dx7_algo(i,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreq,opDetune,opRateScale,feedback,lfoDelay,lfoDepth,lfoSpeed,freq,gain,gate) : control(algorithm == i)) :> _
+dx7_ui = hgroup("dx7",
+  par(i,32,dx7_algo(i,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,freq,gain,gate) : control(algorithm == i)) :> _
+)
 with{
-	algorithm = nentry("h:dx7/v:global/[0]algorithm",0,0,31,1) : int;
-	feedback = nentry("h:dx7/v:global/[1]feedback",0,0,99,1) : dx7_fdbkscalef/(2*ma.PI);
-	lfoDelay = nentry("h:dx7/v:global/[2]lfoDelay",0,0,99,1);
-	lfoDepth = nentry("h:dx7/v:global/[3]lfoDepth",0,0,99,1);
-	lfoSpeed = nentry("h:dx7/v:global/[4]lfoSpeed",0,0,99,1);
-	freq = hslider("h:dx7/v:global/[5]freq",400,50,1000,0.01);
-	gain = hslider("h:dx7/v:global/[6]gain",0.8,0,1,0.01);
-	gate = button("h:dx7/v:global/[7]gate");
-	egR1UI = par(i,6,nentry("h:dx7/v:[%i]op%i/[0]egR1",90,0,99,1));
-	egR1(n) = ba.take(n+1,egR1UI);
-	egR2UI = par(i,6,nentry("h:dx7/v:[%i]op%i/[1]egR2",90,0,99,1));
-	egR2(n) = ba.take(n+1,egR2UI);
-	egR3UI = par(i,6,nentry("h:dx7/v:[%i]op%i/[2]egR3",90,0,99,1));
-	egR3(n) = ba.take(n+1,egR3UI);
-	egR4UI = par(i,6,nentry("h:dx7/v:[%i]op%i/[3]egR4",90,0,99,1));
-	egR4(n) = ba.take(n+1,egR4UI);
-	egL1UI = par(i,6,nentry("h:dx7/v:[%i]op%i/[4]egL1",0,0,99,1));
-	egL1(n) = ba.take(n+1,egL1UI);
-	egL2UI = par(i,6,nentry("h:dx7/v:[%i]op%i/[5]egL2",90,0,99,1));
-	egL2(n) = ba.take(n+1,egL2UI);
-	egL3UI = par(i,6,nentry("h:dx7/v:[%i]op%i/[6]egL3",90,0,99,1));
-	egL3(n) = ba.take(n+1,egL3UI);
-	egL4UI = par(i,6,nentry("h:dx7/v:[%i]op%i/[7]egL4",0,0,99,1));
-	egL4(n) = ba.take(n+1,egL4UI);
-	outLevelUI = par(i,6,nentry("h:dx7/v:[%i]op%i/[8]level",95,0,99,1));
-	outLevel(n) = ba.take(n+1,outLevelUI);
-	keyVelSensUI = par(i,6,nentry("h:dx7/v:[%i]op%i/[9]keyVelSens",1,0,8,1));
-	keyVelSens(n) = ba.take(n+1,keyVelSensUI);
-	ampModSensUI = par(i,6,nentry("h:dx7/v:[%i]op%i/[10]ampModSens",0,0,99,1));
-	ampModSens(n) = ba.take(n+1,ampModSensUI);
-	opModeUI = par(i,6,nentry("h:dx7/v:[%i]op%i/[11]opMode",0,0,1,1));
-	opMode(n) = ba.take(n+1,opModeUI);
-	opFreqUI = par(i,6,nentry("h:dx7/v:[%i]op%i/[12]opFreq",1.0,0.0,2.0,0.01));
-	opFreq(n) = ba.take(n+1,opFreqUI);
-	opDetuneUI = par(i,6,nentry("h:dx7/v:[%i]op%i/[13]opDetune",1,-10,10,1));
-	opDetune(n) = ba.take(n+1,opDetuneUI);
-	opRateScaleUI = par(i,6,nentry("h:dx7/v:[%i]op%i/[14]opRateScale",0,0,10,1));
-	opRateScale(n) = ba.take(n+1,opRateScaleUI);
+  algorithm = nentry("v:global/[0]algorithm",0,0,31,1) : int;
+  feedback = nentry("v:global/[1]feedback",0,0,7,1) * 99 * .875 /(7*2*ma.PI); // todo: what's the scale factor here
+
+  lfoWave = nentry("v:global/h:[2]LFO/[0]Wave",0,0,5,1); // (triangle, saw down, saw up, square, sine, sample&hold)
+  lfoSpeed = nentry("v:global/h:[2]LFO/[1]Speed",0,0,99,1);
+  lfoDelay = nentry("v:global/h:[2]LFO/[2]Delay",0,0,99,1);
+  lfoPMD = nentry("v:global/h:[2]LFO/[3]PMD",0,0,99,1);
+  lfoAMD = nentry("v:global/h:[2]LFO/[4]AMD",0,0,99,1);
+  lfoSync = nentry("v:global/h:[2]LFO/[5]Sync",0,0,1,1);
+
+  freq = hslider("v:global/[3]freq",400,50,1000,0.01);
+  gain = hslider("v:global/[4]gain",0.8,0,1,0.01);
+  gate = button("v:global/[5]gate");
+
+  egR1UI = par(i,6,nentry("v:[%i]op%i/[0]egR1",90,0,99,1));
+  egR1(n) = ba.take(n+1,egR1UI);
+  egR2UI = par(i,6,nentry("v:[%i]op%i/[1]egR2",90,0,99,1));
+  egR2(n) = ba.take(n+1,egR2UI);
+  egR3UI = par(i,6,nentry("v:[%i]op%i/[2]egR3",90,0,99,1));
+  egR3(n) = ba.take(n+1,egR3UI);
+  egR4UI = par(i,6,nentry("v:[%i]op%i/[3]egR4",90,0,99,1));
+  egR4(n) = ba.take(n+1,egR4UI);
+  egL1UI = par(i,6,nentry("v:[%i]op%i/[4]egL1",0,0,99,1));
+  egL1(n) = ba.take(n+1,egL1UI);
+  egL2UI = par(i,6,nentry("v:[%i]op%i/[5]egL2",90,0,99,1));
+  egL2(n) = ba.take(n+1,egL2UI);
+  egL3UI = par(i,6,nentry("v:[%i]op%i/[6]egL3",90,0,99,1));
+  egL3(n) = ba.take(n+1,egL3UI);
+  egL4UI = par(i,6,nentry("v:[%i]op%i/[7]egL4",0,0,99,1));
+  egL4(n) = ba.take(n+1,egL4UI);
+  outLevelUI = par(i,6,nentry("v:[%i]op%i/[8]level",95,0,99,1));
+  outLevel(n) = ba.take(n+1,outLevelUI);
+  keyVelSensUI = par(i,6,nentry("v:[%i]op%i/[9]keyVelSens",1,0,7,1));
+  keyVelSens(n) = ba.take(n+1,keyVelSensUI);
+  ampModSensUI = par(i,6,nentry("v:[%i]op%i/[10]ampModSens",0,0,3,1));
+  ampModSens(n) = ba.take(n+1,ampModSensUI);
+  opModeUI = par(i,6,nentry("v:[%i]op%i/[11]opMode",0,0,1,1));
+  opMode(n) = ba.take(n+1,opModeUI);
+  opFreqCoarseUI = par(i,6,nentry("v:[%i]op%i/[12]opFreqCoarse",0,0.0,31,1));
+  opFreqCoarse(n) = ba.take(n+1,opFreqCoarseUI);
+  opFreqFineUI = par(i,6,nentry("v:[%i]op%i/[13]opFreqFine",0,0.0,99,1));
+  opFreqFine(n) = ba.take(n+1,opFreqFineUI);
+  opDetuneUI = par(i,6,nentry("v:[%i]op%i/[14]opDetune",0,-7,7,1));
+  opDetune(n) = ba.take(n+1,opDetuneUI);
+  opRateScaleUI = par(i,6,nentry("v:[%i]op%i/[15]opRateScale",0,0,7,1));
+  opRateScale(n) = ba.take(n+1,opRateScaleUI);
 };
