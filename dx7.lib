@@ -52,6 +52,7 @@ closed source license or any other license if you decide so.
 /*
 TODO:
   * LFO not implemented yet
+  * Break point, curve, and depth are all related and not implemented.
   * Fix or better justify hard-coded values related to feedback
   * The whole system needs some tuning
 */
@@ -276,18 +277,18 @@ dx7_fdbkscalef = *(0.875);
 // * `freqCoarse`: coarse frequency (0-31)
 // * `freqFine`: fine frequency (0-99)
 // * `detune`: detune in semitones (-7 - 7)
-// * `outLev`: preset output level (0-99)
-// * `R1`: preset envelope rate 1 (0-99)
-// * `R2`: preset envelope rate 2 (0-99)
-// * `R3`: preset envelope rate 3 (0-99)
-// * `R4`: preset envelope rate 4 (0-99)
-// * `L1`: preset envelope level 1 (0-99)
-// * `L2`: preset envelope level 2 (0-99)
-// * `L3`: preset envelope level 3 (0-99)
-// * `L4`: preset envelope level 4 (0-99)
-// * `keyVelSens`: preset key velocity sensitivities (0-7)
-// * `ampModSens`: preset amplitude sensitivities (0-3)
-// * `rateScale`: preset envelope rate scale (0-7)
+// * `outLev`: output level (0-99)
+// * `R1`: envelope rate 1 (0-99)
+// * `R2`: envelope rate 2 (0-99)
+// * `R3`: envelope rate 3 (0-99)
+// * `R4`: envelope rate 4 (0-99)
+// * `L1`: envelope level 1 (0-99)
+// * `L2`: envelope level 2 (0-99)
+// * `L3`: envelope level 3 (0-99)
+// * `L4`: envelope level 4 (0-99)
+// * `keyVelSens`: key velocity sensitivity (0-7)
+// * `ampModSens`: amplitude sensitivity (0-3)
+// * `rateScale`: envelope rate scale (0-7)
 // * `lfoWave`: LFO wave mode (0-5) (triangle, saw down, saw up, square, sine, sample&hold)
 // * `lfoSpeed`: LFO speed (0-99)
 // * `lfoDelay`: LFO delay (0-99)
@@ -306,7 +307,7 @@ dx7_fdbkscalef = *(0.875);
 // * `pitch_egL4`: pitch envelope generator level 4 (0-99)
 // * `transpose`: global transpose (-24 - 24)
 // * `phaseMod`: phase deviation (-1 - 1)
-// * `type`: preset operator type (0-1)
+// * `type`: operator type (0-1)
 // * `base_freq`: frequency of the oscillator
 // * `gain`: general gain
 // * `gate`: trigger signal
@@ -450,23 +451,23 @@ with{
 // Where:
 //
 // * `algN`: algorithm number (0-31, should be an int...)
-// * `egR1`: preset envelope rates 1 (a list of 6 values between 0-99)
-// * `egR2`: preset envelope rates 2 (a list of 6 values between 0-99)
-// * `egR3`: preset envelope rates 3 (a list of 6 values between 0-99)
-// * `egR4`: preset envelope rates 4 (a list of 6 values between 0-99)
-// * `egL1`: preset envelope levels 1 (a list of 6 values between 0-99)
-// * `egL2`: preset envelope levels 2 (a list of 6 values between 0-99)
-// * `egL3`: preset envelope levels 3 (a list of 6 values between 0-99)
-// * `egL4`: preset envelope levels 4 (a list of 6 values between 0-99)
-// * `outLevel`: preset output levels (a list of 6 values between 0-99)
-// * `keyVelSens`: preset key velocity sensitivities (a list of 6 values between 0-7)
-// * `ampModSens`: preset amplitude sensitivities (a list of 6 values between 0-3)
-// * `opMode`: preset operator mode (a list of 6 values between 0-1)
-// * `opFreqCoarse`: preset operator frequencies (a list of 6 values between 0-31)
-// * `opFreqFine`: preset operator frequencies (a list of 6 values between 0-99)
-// * `opDetune`: preset operator detuning (a list of 6 values between 0-99)
-// * `opRateScale`: preset operator rate scale (a list of 6 values between 0-7)
-// * `feedback`: preset operator feedback
+// * `egR1`: envelope rates 1 (a list of 6 values between 0-99)
+// * `egR2`: envelope rates 2 (a list of 6 values between 0-99)
+// * `egR3`: envelope rates 3 (a list of 6 values between 0-99)
+// * `egR4`: envelope rates 4 (a list of 6 values between 0-99)
+// * `egL1`: envelope levels 1 (a list of 6 values between 0-99)
+// * `egL2`: envelope levels 2 (a list of 6 values between 0-99)
+// * `egL3`: envelope levels 3 (a list of 6 values between 0-99)
+// * `egL4`: envelope levels 4 (a list of 6 values between 0-99)
+// * `outLevel`: output levels (a list of 6 values between 0-99)
+// * `keyVelSens`: key velocity sensitivities (a list of 6 values between 0-7)
+// * `ampModSens`: amplitude sensitivities (a list of 6 values between 0-3)
+// * `opMode`: operator mode (a list of 6 values between 0-1)
+// * `opFreqCoarse`: operator frequencies (a list of 6 values between 0-31)
+// * `opFreqFine`: operator frequencies (a list of 6 values between 0-99)
+// * `opDetune`: operator detuning (a list of 6 values between 0-99)
+// * `opRateScale`: operator rate scale (a list of 6 values between 0-7)
+// * `feedback`: operator feedback
 // * `lfoWave`: LFO wave mode (0-5) (triangle, saw down, saw up, square, sine, sample&hold)
 // * `lfoSpeed`: LFO speed (0-99)
 // * `lfoDelay`: LFO delay (0-99)
