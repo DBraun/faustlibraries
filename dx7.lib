@@ -91,8 +91,7 @@ with {
   xPoints(n) = ba.take(n+1,(9,19,29,39,49,59,64,69,74,79,84,89,94,98));
   yPoints(n) = ba.take(n+1,(0.000227445,0.000985595,0.002350265,0.005989386,0.014253222,0.033813495,0.052312358,0.080970432,0.124260804,0.190447309,0.295223654,0.457088704,0.70227445,1));
 };
-// Function estimated from the CSOUND function (default)
-dx7_amp_func = min(98)/98 : pow(_,8);
+dx7_amp_func = min(99, max(0, _))/99 : pow(_,8);
 dx7_ampf = dx7_amp_func;
 
 //----------------------`(dx.)dx7_egraterisef`--------------------------
@@ -386,7 +385,7 @@ with {
 
     hold_timer = 1 : (+~(*(ba.if(gate-gate',0,1))));
 
-    lfoFreq = lfoSpeed : it.remap(0, 99, 1, 50); // todo: remap to "under 1 hz to about 50 Hz" according to official DX7 manual.
+    lfoFreq = lfoSpeed : pow(_/99, 4) : it.remap(0, 1, 1, 50); // todo: remap to "under 1 hz to about 50 Hz" according to official DX7 manual.
     phasor = os.hs_phasor(lfoTableSize,lfoFreq, (lfoDelaySamples >= hold_timer) | (lfoSync & (ba.impulsify(gate))))
     with {
       lfoDelaySamples = lfoDelay * (.5 * ma.SR / 99); // todo: don't know how to scale, so set max to 0.5 seconds
@@ -396,7 +395,7 @@ with {
     with {
         triwaveform = 2*abs((ba.period(lfoTableSize)*2/lfoTableSize-1))-1;
     };
-    lfo_sawdown = -1.*lfo_sawup;
+    lfo_sawdown = -1*lfo_sawup;
     lfo_sawup = (phasor/lfoTableSize)*2-1;
     lfo_square = select2((phasor/lfoTableSize)>0.5,-1,1);
     lfo_sine = rdtable(lfoTableSize, os.sinwaveform(lfoTableSize), phasor);
@@ -405,7 +404,7 @@ with {
 
   lfoDetune = lfo * lfoPMD * lfoPitchModSens * (12 / (99*7)); // todo: it currently detunes to plus/minus 12 semitones when lfoPMD is maxed at 99 and lfoPitchModSens is 7
 
-  lfoGain = it.interpolate_linear(lfoAMD*ampModSens/(99*3), 1, lfo*.5+.5);
+  lfoGain = it.interpolate_linear(lfoAMD*ampModSens/(99*3), 0, lfo*49); // todo:
 
   // phase modulation, not freq modulation
   sineWave = rdtable(tablesize, os.sinwaveform(tablesize), ma.modulo(int(os.hs_phasor(tablesize,freq, oscKeySync & (ba.impulsify(gate))) + phaseMod*tablesize),tablesize));
@@ -438,9 +437,22 @@ with {
       - : abs : max(0.001);
   };
 
-  envGain = makeEnvelope(R1,R2,R3,R4,L1,L2,L3,L4) <: select2(type,dx7_eglv2peakf,dx7_ampf);
-  velGain = it.interpolate_linear(keyVelSens/7, 1, gain*(outLev/99));
-  output = (envGain*velGain*lfoGain)*sineWave;
+  brkPointGain = brkDepth*select2((brkCurve == 1)|(brkCurve==2), normalized, pow(normalized, 2.)) // todo: exponential is not pow
+  with {
+    note = base_freq : ba.hz2midikey;
+    breakpointNote = breakpoint : it.remap(0, 99, 33, 108); // A1 (33) to C8 (108)
+    is_right_sec = note >= breakpointNote;
+
+    brkCurve = select2(is_right_sec, breakpointLCurve, breakpointRCurve);
+    brkDepth = select2(is_right_sec, breakpointLDepth, breakpointRDepth)*select2(brkCurve<2,1,-1);
+
+    // A1 (33) to C8 (108)
+    normalized = select2(is_right_sec, (breakpoint-note)/max(1, breakpointNote-33), (note-breakpoint)/max(1, 108-breakpointNote)) : min(1);
+  };
+  
+  envGain = makeEnvelope(R1,R2,R3,R4,L1,L2,L3,L4) + (outLev-99) + brkPointGain + lfoGain <: select2(type,dx7_eglv2peakf,dx7_ampf);
+  velGain = it.interpolate_linear(keyVelSens/7, 1, gain);
+  output = envGain*velGain*sineWave;
 };
 
 
