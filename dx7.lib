@@ -244,22 +244,6 @@ with{
 dx7_eglv2peak_func = min(98)/98 : pow(_,8) : *(2.08795);
 dx7_eglv2peakf = dx7_eglv2peak_func;
 
-//----------------------`(dx.)dx7_velsensf`--------------------------
-// DX7 velocity sensitivity conversion function.
-//
-// #### Usage:
-//
-// ```
-// dx7Velocity  : dx7_velsensf : _
-// ```
-//
-// Where:
-//
-// * `dx7Velocity`: DX7 level value (0-8)
-//-----------------------------------------------------------
-// Corresponds to F10 in the CSOUND implementation
-dx7_velsensf = /(8);
-
 //----------------------`(dx.)dx7_fdbkscalef`--------------------------
 // DX7 feedback scaling conversion function.
 //
@@ -449,7 +433,7 @@ with{
   };
 
   envGain = makeEnvelope(R1,R2,R3,R4,L1,L2,L3,L4) <: select2(type,dx7_eglv2peakf,dx7_ampf);
-  velGain = it.interpolate_linear(dx7_velsensf(keyVelSens), 1, gain*(outLev/99));
+  velGain = it.interpolate_linear(keyVelSens/7, 1, gain*(outLev/99));
   output = (envGain*velGain*lfoGain)*sineWave;
 };
 
