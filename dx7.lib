@@ -268,7 +268,7 @@ dx7_fdbkscalef = *(0.875);
 // #### Usage:
 //
 // ```
-// dx7_op(mode,freqCoarse,freqFine,detune,outLev,R1,R2,R3,R4,L1,L2,L3,L4,keyVelSens,ampModSens,rateScale,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phaseMod,type,base_freq,gain,gate) : _
+// dx7_op(mode,freqCoarse,freqFine,detune,outLev,R1,R2,R3,R4,L1,L2,L3,L4,keyVelSens,ampModSens,rateScale,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phaseMod,type,base_freq,gain,gate) : _
 // ```
 //
 // Where:
@@ -305,6 +305,11 @@ dx7_fdbkscalef = *(0.875);
 // * `pitch_egL2`: pitch envelope generator level 2 (0-99)
 // * `pitch_egL3`: pitch envelope generator level 3 (0-99)
 // * `pitch_egL4`: pitch envelope generator level 4 (0-99)
+// * `breakpoint`: break point position (0-99)
+// * `breakpointLDepth`: break point left depth (0-99)
+// * `breakpointRDepth`: break point right depth (0-99)
+// * `breakpointLCurve`: break point left curve (0-3) (-LIN,-EXP,+EXP,+LIN)
+// * `breakpointRCurve`: break point right curve (0-3) (-LIN,-EXP,+EXP,+LIN)
 // * `transpose`: global transpose (-24 - 24)
 // * `phaseMod`: phase deviation (-1 - 1)
 // * `type`: operator type (0-1)
@@ -312,7 +317,7 @@ dx7_fdbkscalef = *(0.875);
 // * `gain`: general gain
 // * `gate`: trigger signal
 //-----------------------------------------------------------------
-dx7_op(mode,freqCoarse,freqFine,detune,outLev,R1,R2,R3,R4,L1,L2,L3,L4,keyVelSens,ampModSens,rateScale,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phaseMod,type,base_freq,gain,gate) = output
+dx7_op(mode,freqCoarse,freqFine,detune,outLev,R1,R2,R3,R4,L1,L2,L3,L4,keyVelSens,ampModSens,rateScale,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phaseMod,type,base_freq,gain,gate) = output
 with{
 
   freq = select2(mode,freq_ratio*base_freq*ba.semi2ratio(transpose+detune+lfoDetune+pitchEnvDetune),freq_fixed) // todo: check this
@@ -445,7 +450,7 @@ with{
 // #### Usage:
 //
 // ```
-// dx7_algo(algN,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) : _
+// dx7_algo(algN,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) : _
 // ```
 //
 // Where:
@@ -484,6 +489,11 @@ with{
 // * `pitch_egL2`: pitch envelope generator level 2 (0-99)
 // * `pitch_egL3`: pitch envelope generator level 3 (0-99)
 // * `pitch_egL4`: pitch envelope generator level 4 (0-99)
+// * `breakpoint`: break point position (0-99)
+// * `breakpointLDepth`: break point left depth (0-99)
+// * `breakpointRDepth`: break point right depth (0-99)
+// * `breakpointLCurve`: break point left curve (0-3) (-LIN,-EXP,+EXP,+LIN)
+// * `breakpointRCurve`: break point right curve (0-3) (-LIN,-EXP,+EXP,+LIN)
 // * `transpose`: global transpose (-24 - 24)
 // * `freq`: fundamental frequency
 // * `gain`: general gain
@@ -494,11 +504,11 @@ with{
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(0,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2 : op1),(op6~*(feedback*.2) : op5 : op4 : op3) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -512,11 +522,11 @@ with{
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(1,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2~*(feedback*.2) : op1),(op6 : op5 : op4 : op3) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -530,11 +540,11 @@ with{
 // Note: weird rand and delay implemented in the csound orchestra and not
 // really sure why...
 dx7_algo(2,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op3 : op2 : op1),(op6~*(feedback) : op5 : op4) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -546,11 +556,11 @@ with{
 
 // Alg 4
 dx7_algo(3,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op3 : op2 : op1),(op6 : op5 : op4)~*(feedback) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -564,11 +574,11 @@ with{
 // NOTE: the .1 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(4,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2 : op1),(op4 : op3),(op6~*(feedback*.1) : op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -580,11 +590,11 @@ with{
 
 // Alg 6
 dx7_algo(5,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2 : op1),(op4 : op3),(op6 : op5)~*(feedback) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -596,11 +606,11 @@ with{
 
 // Alg 7
 dx7_algo(6,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2 : op1),(op4,(op6~*(feedback) : op5) :> op3) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -614,11 +624,11 @@ with{
 // NOTE: the .1 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(7,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2 : op1),(op4~*(feedback*.1),(op6 : op5) :> op3) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -632,11 +642,11 @@ with{
 // NOTE: the .4 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(8,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2~*(feedback*.4) : op1),(op4,(op6 : op5) :> op3) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -650,11 +660,11 @@ with{
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(9,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op5,op6 :> op4),(op3~*(feedback*.2) : op2 : op1) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -668,11 +678,11 @@ with{
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(10,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op5,op6~*(feedback*.2) :> op4),(op3 : op2 : op1) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -686,11 +696,11 @@ with{
 // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(11,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op4,op5,op6 :> op3),(op2~*(feedback*.2) : op1) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -702,11 +712,11 @@ with{
 
 // Alg 13
 dx7_algo(12,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op4,op5,op6~*(feedback) :> op3),(op2 : op1) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -718,11 +728,11 @@ with{
 
 // Alg 14
 dx7_algo(13,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2 : op1),(op5,op6~*(feedback) :> op4 : op3) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -736,11 +746,11 @@ with{
 // NOTE: the .4 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(14,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2~*(feedback*.4) : op1),(op5,op6 :> op4 : op3) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -752,11 +762,11 @@ with{
 
 // Alg 16
 dx7_algo(15,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op2,(op4 : op3),(op6~*(feedback) : op5) :> op1
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -770,11 +780,11 @@ with{
 // NOTE: the .5 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(16,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op2~*(feedback*.5),(op4 : op3),(op6 : op5) :> op1
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -786,11 +796,11 @@ with{
 
 // Alg 18
 dx7_algo(17,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op2,op3~*(feedback),(op6 : op5 : op4) :> op1
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, _, 1);
@@ -804,11 +814,11 @@ with{
 // NOTE: the .4 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(18,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op3 : op2 : op1),(op6~*(feedback*.4) <: op4,op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -820,11 +830,11 @@ with{
 
 // Alg 20
 dx7_algo(19,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op3~*(feedback) <: op1,op2),(op5,op6 :> op4) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -836,11 +846,11 @@ with{
 
 // Alg 21
 dx7_algo(20,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op3~*(feedback) <: op1,op2),(op6 <: op4,op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -854,11 +864,11 @@ with{
 // NOTE: the .1 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(21,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2 : op1),(op6~*(feedback*.1) <: op3,op4,op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -870,11 +880,11 @@ with{
 
 // Alg 23
 dx7_algo(22,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,(op3 : op2),(op6~*(feedback) <: op4,op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -888,11 +898,11 @@ with{
 // NOTE: the .6 for feedback was hardcoded in the csound orchestra, not sure why
 // we need it
 dx7_algo(23,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,op2,(op6~*(feedback*.6) <: op3,op4,op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -904,11 +914,11 @@ with{
 
 // Alg 25
 dx7_algo(24,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,op2,op3,(op6~*(feedback) <: op4,op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -920,11 +930,11 @@ with{
 
 // Alg 26
 dx7_algo(25,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,(op3 : op2),(op5,op6~*(feedback) :> op4) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -936,11 +946,11 @@ with{
 
 // Alg 27
 dx7_algo(26,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,(op3~*(feedback) : op2),(op5,op6 :> op4) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 1);
   op5 = make_dx7_op(4, 0, 1);
@@ -952,11 +962,11 @@ with{
 
 // Alg 28
 dx7_algo(27,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 (op2 : op1),(op5~*(feedback) : op4 : op3),op6 :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 0);
   op5 = make_dx7_op(4, _, 1);
@@ -968,11 +978,11 @@ with{
 
 // Alg 29
 dx7_algo(28,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,op2,(op4 : op3),(op6~*(feedback) : op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -984,11 +994,11 @@ with{
 
 // Alg 30
 dx7_algo(29,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,op2,(op5~*(feedback) : op4 : op3),op6 :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 0);
   op5 = make_dx7_op(4, _, 1);
@@ -1000,11 +1010,11 @@ with{
 
 // Alg 31
 dx7_algo(30,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,op2,op3,op4,(op6~*(feedback) : op5) :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, _, 1);
   op5 = make_dx7_op(4, _, 0);
@@ -1016,11 +1026,11 @@ with{
 
 // Alg 32
 dx7_algo(31,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) =
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) =
 op1,op2,op3,op4,op5,op6 :> _
 with{
   make_dx7_op(i, phase_mod, type) = dx7_op(opMode(i),opFreqCoarse(i),opFreqFine(i),opDetune(i),outLevel(i),egR1(i),egR2(i),egR3(i),egR4(i),egL1(i),egL2(i),egL3(i),egL4(i),keyVelSens(i),ampModSens(i),opRateScale(i),lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,phase_mod,type,freq,gain,gate);
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,phase_mod,type,freq,gain,gate);
 
   op6 = make_dx7_op(5, 0, 0);
   op5 = make_dx7_op(4, 0, 0);
@@ -1043,7 +1053,7 @@ with{
 //-----------------------------------------------------------------
 dx7_ui = hgroup("DX7",
   par(i,32,dx7_algo(i,egR1,egR2,egR3,egR4,egL1,egL2,egL3,egL4,outLevel,keyVelSens,ampModSens,opMode,opFreqCoarse,opFreqFine,opDetune,opRateScale,feedback,lfoWave,lfoSpeed,lfoDelay,lfoPMD,lfoAMD,lfoSync,lfoPitchModSens,oscKeySync,pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,
-  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,transpose,freq,gain,gate) : control(algorithm == i)) :> _
+  pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4,breakpoint,breakpointLDepth,breakpointRDepth,breakpointLCurve,breakpointRCurve,transpose,freq,gain,gate) : control(algorithm == i)) :> _
 )
 with{
 
@@ -1052,9 +1062,10 @@ with{
   PEGR(x) = GLOBAL(hgroup("[1] Pitch Env Generator Rates", x));
   PEGL(x) = GLOBAL(hgroup("[2] Pitch Env Generator Levels", x));
   LFO(x) = GLOBAL(hgroup("[3] LFO", x));
-  freq = GLOBAL(hslider("[4] freq",400,50,1000,0.01));
-  gain = GLOBAL(hslider("[5] gain",0.8,0,1,0.01));
-  gate = GLOBAL(button("[6] gate"));
+  BREAKPOINT(x) = GLOBAL(hgroup("[4] Break Point", x));
+  freq = GLOBAL(hslider("[5] freq",400,50,1000,0.01));
+  gain = GLOBAL(hslider("[6] gain",0.8,0,1,0.01));
+  gate = GLOBAL(button("[7] gate"));
 
   algorithm = MAIN(nentry("[0] Algorithm",1,1,32,1))-1 : int;
   feedback = MAIN(nentry("[1] Feedback",0,0,7,1) : dx7_fdbkscalef/(2*ma.PI));
@@ -1068,6 +1079,12 @@ with{
   lfoAMD = LFO(nentry("[4] AMD",0,0,99,1));
   lfoSync = LFO(nentry("[5] Sync",1,0,1,1));
   lfoPitchModSens = LFO(nentry("[6] Pitch Mod Sens",3,0,7,1));
+
+  breakpoint = BREAKPOINT(nentry("Break Point", 51, 0, 99, 1));  // todo: not sure about default
+  breakpointLDepth = BREAKPOINT(nentry("[0] Left Depth", 0, 0, 99, 1));
+  breakpointRDepth = BREAKPOINT(nentry("[1] Right Depth", 0, 0, 99, 1));
+  breakpointLCurve = BREAKPOINT(nentry("[2] Left Curve [style:menu{'-LIN':0;'-EXP':1;'+EXP':2;'+LIN':3;}]",0,0,3,1));
+  breakpointRCurve = BREAKPOINT(nentry("[3] Right Curve [style:menu{'-LIN':0;'-EXP':1;'+EXP':2;'+LIN':3;}]",0,0,3,1));
 
   pitch_egR1 = PEGR(nentry("[0] R1",90,0,99,1));
   pitch_egR2 = PEGR(nentry("[1] R2",90,0,99,1));
