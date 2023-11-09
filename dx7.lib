@@ -397,7 +397,7 @@ with {
     };
     lfo_sawdown = -1*lfo_sawup;
     lfo_sawup = (phasor/lfoTableSize)*2-1;
-    lfo_square = select2((phasor/lfoTableSize)>0.5,-1,1);
+    lfo_square = select2(phasor > (lfoTableSize/2),-1,1);
     lfo_sine = rdtable(lfoTableSize, os.sinwaveform(lfoTableSize), phasor);
     lfo_sh = no.lfnoise0(lfoFreq); // "random output" according to official DX7 manual
   };
@@ -414,7 +414,7 @@ with {
   makeEnvelope(r1,r2,r3,r4,egl1,egl2,egl3,egl4) = en.dx7envelope(egr1,egr2,egr3,egr4,egl1,egl2,egl3,egl4,gate)
   with {
     // computing rates
-    rs = (base_freq : ba.hz2midikey)-21 : /(105)*6*rateScale;
+    rs = (base_freq : ba.hz2midikey)-21 : /(105)*6*rateScale; // todo:
     egr1 = r1+rs : min(99) <:
       select2(egl1 > egl4,dx7_egratedecayf,dx7_egraterisef) <:
       *(egl4 <: select2( egl1 > egl4, dx7_egratedecaypercf, dx7_egraterisepercf)),
@@ -422,8 +422,8 @@ with {
       - : abs : max(0.001);
     egr2 = r2+rs : min(99) <:
       select2(egl2 > egl1,dx7_egratedecayf,dx7_egraterisef) <:
-      *(egl2 <: select2( egl2 > egl1, dx7_egratedecaypercf, dx7_egraterisepercf)),
-      *(egl1 <: select2( egl2 > egl1, dx7_egratedecaypercf, dx7_egraterisepercf)) :
+      *(egl1 <: select2( egl2 > egl1, dx7_egratedecaypercf, dx7_egraterisepercf)),
+      *(egl2 <: select2( egl2 > egl1, dx7_egratedecaypercf, dx7_egraterisepercf)) :
       - : abs : max(0.001);
     egr3 = r3+rs : min(99) <:
       select2(egl3 > egl2,dx7_egratedecayf,dx7_egraterisef) <:
@@ -431,9 +431,9 @@ with {
       *(egl3 <: select2( egl3 > egl2, dx7_egratedecaypercf, dx7_egraterisepercf)) :
       - : abs : max(0.001);
     egr4 = r4+rs : min(99) <:
-      select2(egl3 <= egl4,dx7_egratedecayf,dx7_egraterisef) <:
-      *(egl3 <: select2(egl3 <= egl4, dx7_egratedecaypercf, dx7_egraterisepercf)),
-      *(egl4 <: select2(egl3 <= egl4, dx7_egratedecaypercf, dx7_egraterisepercf)) :
+      select2(egl4 >= egl3,dx7_egratedecayf,dx7_egraterisef) <:
+      *(egl3 <: select2(egl4 >= egl3, dx7_egratedecaypercf, dx7_egraterisepercf)),
+      *(egl4 <: select2(egl4 >= egl3, dx7_egratedecaypercf, dx7_egraterisepercf)) :
       - : abs : max(0.001);
   };
 
@@ -663,7 +663,6 @@ with {
     op1 = make_dx7_op(0, _, 0);
   };
 
-  // Alg 11
   // NOTE: the .2 for feedback was hardcoded in the csound orchestra, not sure why we need it
   dx7_algo(11) = (op5,op6~*(feedback*.2) :> op4),(op3 : op2 : op1) :> _
   with {
@@ -821,7 +820,6 @@ with {
     op1 = make_dx7_op(0, 0, 0);
   };
 
-  // Alg 26
   dx7_algo(26) = op1,(op3 : op2),(op5,op6~*(feedback) :> op4) :> _
   with {
     op6 = make_dx7_op(5, _, 1);
