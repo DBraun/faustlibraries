@@ -391,7 +391,7 @@ with {
       lfoDelaySamples = lfoDelay * (.5 * ma.SR / 99); // todo: don't know how to scale, so set max to 0.5 seconds
     };
 
-    lfo_tri = rdtable(lfoTableSize, triwaveform, ma.modulo(phasor-int(lfoTableSize/4), tablesize))
+    lfo_tri = rdtable(lfoTableSize, triwaveform, ma.modulo(phasor-int(lfoTableSize/4), lfoTableSize))
     with {
         triwaveform = 2*abs((ba.period(lfoTableSize)*2/lfoTableSize-1))-1;
     };
