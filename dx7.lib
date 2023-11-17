@@ -407,7 +407,10 @@ with {
   lfoGain = it.interpolate_linear(lfoAMD*ampModSens/(99*3), 0, lfo*49); // todo:
 
   // phase modulation, not freq modulation
-  sineWave = rdtable(tablesize, os.sinwaveform(tablesize), ma.modulo(int(os.hs_phasor(tablesize,freq, oscKeySync & (ba.impulsify(gate))) + phaseMod*tablesize),tablesize));
+  sineWave = rdtable(tablesize, os.sinwaveform(tablesize), idx)
+  with {
+    idx = ma.modulo(int(os.hs_phasor(tablesize,freq, oscKeySync & (ba.impulsify(gate))) + phaseMod*tablesize),tablesize);
+  };
 
   pitchEnvDetune = makeEnvelope(pitch_egR1,pitch_egR2,pitch_egR3,pitch_egR4,pitch_egL1,pitch_egL2,pitch_egL3,pitch_egL4) : (ba.bpf.start(0,-48) : ba.bpf.point(50,0) : ba.bpf.end(99,48));
 
@@ -455,8 +458,7 @@ with {
   output = envGain*velGain*sineWave;
 };
 
-
-//------------------------------`(dx.)dx7_ui`---------------------------
+//------------------------------`(dx.)dx7_all`---------------------------
 // Generic DX7 function where all parameters are controllable using UI elements.
 // The `master-with-mute` branch must be used for this function to work...
 // This function is MIDI-compatible.
@@ -464,12 +466,26 @@ with {
 // #### Usage
 //
 // ```
-// dx7_ui : _
+// dx7_all : _
 // ```
 //-----------------------------------------------------------------
-dx7_ui = hgroup("DX7",
-  par(i,32,dx7_algo(i+1) : control(algorithm-1 == i)) :> _
-)
+dx7_all = par(i,32,dx7_algorithm(i+1) : control(algorithm-1 == i)) :> _;
+
+//------------------------------`(dx.)dx7_algorithm`---------------------------
+// DX7 function for a specific algorithm at compile-time. This function is 
+// MIDI-compatible.
+//
+// #### Usage
+//
+// ```
+// dx7_algorithm(algorithm) : _
+// ```
+// 
+// Where:
+// * `algorithm`: algorithm identifier (1-32)
+//
+//-----------------------------------------------------------------
+dx7_algorithm(algorithm) = hgroup("DX7", dx7_algo(algorithm))
 with {
 
   GLOBAL(x) = vgroup("Global", x);
@@ -481,18 +497,9 @@ with {
   gain = GLOBAL(hslider("[5] gain",0.8,0,1,0.01));
   gate = GLOBAL(button("[6] gate"));
 
-  algorithm = MAIN(nentry("[0] Algorithm",1,1,32,1)) : int;
-  feedback = MAIN(nentry("[1] Feedback",0,0,7,1) : dx7_fdbkscalef/(2*ma.PI));
-  transpose = MAIN(nentry("[2] Transpose",0,-24,24,1));
-  oscKeySync = MAIN(nentry("[3] Osc Key Sync",1,0,1,1));
-
-  lfoWave = LFO(nentry("[0] Wave [style:menu{'Triangle':0;'Saw Down':1;'Saw Up':2;'Square':3;'Sine':4;'Sample & Hold':5}]",0,0,5,1));
-  lfoSpeed = LFO(nentry("[1] Speed",35,0,99,1));
-  lfoDelay = LFO(nentry("[2] Delay",0,0,99,1));
-  lfoPMD = LFO(nentry("[3] PMD",0,0,99,1));
-  lfoAMD = LFO(nentry("[4] AMD",0,0,99,1));
-  lfoSync = LFO(nentry("[5] Sync",1,0,1,1));
-  lfoPitchModSens = LFO(nentry("[6] Pitch Mod Sens",3,0,7,1));
+  feedback = MAIN(nentry("[0] Feedback",0,0,7,1) : dx7_fdbkscalef/(2*ma.PI));
+  transpose = MAIN(nentry("[1] Transpose",0,-24,24,1));
+  oscKeySync = MAIN(nentry("[2] Osc Key Sync",1,0,1,1));
 
   pitch_egR1 = PEGR(nentry("[0] R1",90,0,99,1));
   pitch_egR2 = PEGR(nentry("[1] R2",90,0,99,1));
@@ -504,12 +511,20 @@ with {
   pitch_egL3 = PEGL(nentry("[2] L3",50,0,99,1));
   pitch_egL4 = PEGL(nentry("[3] L4",50,0,99,1));
 
+  lfoWave = LFO(nentry("[0] Wave [style:menu{'Triangle':0;'Saw Down':1;'Saw Up':2;'Square':3;'Sine':4;'Sample & Hold':5}]",0,0,5,1));
+  lfoSpeed = LFO(nentry("[1] Speed",35,0,99,1));
+  lfoDelay = LFO(nentry("[2] Delay",0,0,99,1));
+  lfoPMD = LFO(nentry("[3] PMD",0,0,99,1));
+  lfoAMD = LFO(nentry("[4] AMD",0,0,99,1));
+  lfoSync = LFO(nentry("[5] Sync",1,0,1,1));
+  lfoPitchModSens = LFO(nentry("[6] Pitch Mod Sens",3,0,7,1));
+
   // concise way of making the same UI element for all 6 operators.
   oppar(entry, n) = ba.take(n+1, par(i, 6, func(i)))
   with {
     func(i) = vgroup("[%i]Operator %j", entry)
     with {
-        j = i+1;
+      j = i+1;
     };
   };
 
@@ -539,7 +554,7 @@ with {
   opFreqFine     = oppar(TONE(nentry("[1] Freq Fine",0,0.0,99,1)));
   opDetune       = oppar(TONE(nentry("[2] Detune",0,-7,7,1)));
 
-  breakpoint = oppar(BREAKPOINT(nentry("[0] Break Point", 51, 0, 99, 1)));  // todo: not sure about default
+  breakpoint       = oppar(BREAKPOINT(nentry("[0] Break Point", 51, 0, 99, 1)));  // todo: not sure about default
   breakpointLDepth = oppar(BREAKPOINT(nentry("[1] Left Depth", 0, 0, 99, 1)));
   breakpointRDepth = oppar(BREAKPOINT(nentry("[2] Right Depth", 0, 0, 99, 1)));
   breakpointLCurve = oppar(BREAKPOINT(nentry("[3] Left Curve [style:menu{'-LIN':0;'-EXP':1;'+EXP':2;'+LIN':3}]",0,0,3,1)));
