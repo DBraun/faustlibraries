@@ -22,6 +22,7 @@ Only the libraries that are considered to be "standard" are documented:
 * `noises.lib`
 * `phaflangers.lib`
 * `physmodels.lib`
+* `probability.lib`
 * `reducemaps.lib`
 * `reverbs.lib`
 * `routes.lib`

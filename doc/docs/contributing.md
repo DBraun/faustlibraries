@@ -133,6 +133,7 @@ os = library("oscillators.lib");
 no = library("noises.lib");
 pf = library("phaflangers.lib");
 pm = library("physmodels.lib");
+pr = library("probability.lib");
 qu = library("quantizers.lib");
 rm = library("reducemaps.lib");
 re = library("reverbs.lib");
