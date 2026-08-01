@@ -14,13 +14,15 @@
 //########################################################################################
 
 ma = library("maths.lib");
+ba = library("basics.lib");
+si = library("signals.lib");
 de = library("delays.lib");
 fi = library("filters.lib");
 os = library("oscillators.lib");
 pf = library("phaflangers.lib");
 
 declare name "Faust Phaser and Flanger Library";
-declare version "1.1.0";
+declare version "1.2.0";
 
 //########################################################################################
 /************************************************************************
@@ -269,3 +271,141 @@ license disposition, if their license choice is not already indicated
 elsewhere among the libraries.  It is expected that all software will be
 released under LGPL, STK-4.3, MIT, BSD, or a similar FOSS license.
 ************************************************************************/
+
+
+//---------------`(pf.)chorus_mono`-------------
+// Mono chorus effect: `voices` decorrelated copies of the input, each read out of
+// one delay line through its own slowly modulated fractional delay, mixed with the
+// dry signal.
+//
+// Unlike `flanger_mono`, which takes its modulating delay as an input signal and
+// leaves the LFO to the caller, a chorus has to generate its LFOs internally: the
+// whole point of the effect is that the voices are mutually decorrelated, and that
+// requires one independent LFO per voice. Voice `i` runs at
+// `rate*(1 - 0.4*frac(i*g))` with `g = 2/(1+sqrt(5))`, the golden-ratio (R1)
+// low-discrepancy sequence, so the voice rates fill `[0.6*rate, rate]` evenly and
+// their ratios are irrational: the LFO ensemble never repeats and the voices cannot
+// phase-lock into one moving comb. Voice `i` also starts at LFO phase
+// `phase + i*2*ma.PI/voices`. Driving every voice at the same rate instead makes the
+// comb pattern repeat once per LFO cycle, which is a flanger, not a chorus.
+//
+// There is deliberately no feedback path: feedback around a modulated delay is what
+// turns a chorus into a flanger, and `flanger_mono` already covers that.
+//
+// The delay signal is smoothed with a 5 ms time constant, which keeps the 5-tap
+// Lagrange interpolator of `de.fdelay4` well conditioned and removes the staircase
+// of the table-lookup LFO. That smoother also attenuates the modulation at high LFO
+// rates (-0.1 dB at 5 Hz, -0.4 dB at 10 Hz, -3 dB at 32 Hz). The smoothed delay is
+// then clamped to `[1.5, dmax-4.5]` samples, the range `de.fdelay4` can address, so
+// the delay line can never be over-run whatever the parameters do.
+//
+// The wet sum is scaled by `1/voices`, so the wet path has unity gain at the instants
+// when the voices line up; the mean wet level sits below the dry level by the comb
+// loss, which is inherent to chorusing rather than a normalization error.
+//
+// `voices = 1` degenerates into a pure delay vibrato, which is the other use of this
+// function: one modulated delay, no comb at all, the pitch swinging by a fraction
+// `2*ma.PI*rate*depth*curdel/ma.SR` of itself. Use `mix = 1` for vibrato only.
+//
+// #### Usage
+//
+// ```
+// _ : chorus_mono(dmax,voices,phase,curdel,rate,depth,mix) : _
+// ```
+//
+// Where:
+//
+// * `dmax`: maximum delay-line length in samples (power of 2), a compile-time
+//   constant - it must exceed `curdel*(1+depth) + 5`
+// * `voices`: number of chorus voices, a compile-time constant - 1 gives a delay
+//   vibrato, 3 to 6 is typical for a chorus
+// * `phase`: LFO phase of the first voice in radians (0 typical)
+// * `curdel`: center delay in samples, the value the LFOs sweep around - 10 to 30 ms
+//   worth of samples is typical
+// * `rate`: LFO rate in Hz of the fastest voice (0.1 to 2 typical)
+// * `depth`: modulation depth between 0 and 1 - the delay sweeps over
+//   `curdel*[1-depth,1+depth]` (0.1 to 0.3 typical)
+// * `mix`: dry/wet mix between 0 (dry only, bit-identical to the input) and 1 (wet only)
+//
+// #### Test
+// ```
+// pf = library("phaflangers.lib");
+// os = library("oscillators.lib");
+// chorus_mono_test = os.osc(440) : pf.chorus_mono(4096, 4, 0, 960, 0.5, 0.2, 0.5);
+// ```
+//
+// #### References
+//
+// * <https://ccrma.stanford.edu/~jos/pasp/Chorus_Effect.html>
+// * <https://ccrma.stanford.edu/~jos/pasp/Doppler_Simulation_Delay_Lines.html>
+// * 'DAFX - Digital Audio Effects', 2nd ed., U. Zolzer (ed.), Wiley 2011,
+//   chapter 2 'Delay-based audio effects'
+// * <https://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/>
+//------------------------------------------------------------
+declare chorus_mono author "David Braun";
+declare chorus_mono license "MIT";
+
+chorus_mono(dmax,voices,phase,curdel,rate,depth,mix) =
+  _ <: (*(1-mix), (par(i,voices,chorusVoice(i)) :> *(mix/voices))) :> _
+with {
+  gold = 2.0/(1.0+sqrt(5.0)); // 0.6180339887..., the "most irrational" number
+  spread = 0.4;               // voice LFO rates fill [(1-spread)*rate, rate]
+  lfoRate(i) = rate * (1.0 - spread*ma.frac(i*gold));
+  lfoAngle(i) = phase + i*2.0*ma.PI/voices;
+  dmin = 1.5;                 // de.fdelay4 is centered on a 1.5-sample delay
+  dtop = dmax-4.5;            // ... and reads up to int(d-1.5)+4 <= dmax-1
+  chorusDelay(i) = curdel*(1.0 + depth*os.oscp(lfoRate(i),lfoAngle(i)))
+                 : si.smooth(ba.tau2pole(0.005)) : max(dmin) : min(dtop);
+  chorusVoice(i) = de.fdelay4(dmax,chorusDelay(i));
+};
+
+
+//---------------`(pf.)chorus_stereo`-------------
+// Stereo chorus effect: `chorus_mono` on each channel, the right-hand one running
+// its LFO ensemble a quarter cycle ahead of the left-hand one.
+//
+// The quarter-cycle offset is what widens the image: fed the same mono signal in
+// both channels with `mix = 1`, the two outputs measure as essentially uncorrelated,
+// whereas without the offset they would be identical. Each channel keeps its own
+// input, so a stereo source stays where it was.
+//
+// With `voices = 1` this is a stereo delay vibrato, the two channels in quadrature.
+//
+// #### Usage
+//
+// ```
+// _,_ : chorus_stereo(dmax,voices,curdel,rate,depth,mix) : _,_
+// ```
+//
+// Where:
+//
+// * `dmax`: maximum delay-line length in samples (power of 2), a compile-time
+//   constant - it must exceed `curdel*(1+depth) + 5`
+// * `voices`: number of chorus voices per channel, a compile-time constant - 1 gives
+//   a delay vibrato, 3 to 6 is typical for a chorus
+// * `curdel`: center delay in samples, the value the LFOs sweep around - 10 to 30 ms
+//   worth of samples is typical
+// * `rate`: LFO rate in Hz of the fastest voice (0.1 to 2 typical)
+// * `depth`: modulation depth between 0 and 1 - the delay sweeps over
+//   `curdel*[1-depth,1+depth]` (0.1 to 0.3 typical)
+// * `mix`: dry/wet mix between 0 (dry only, bit-identical to the input) and 1 (wet only)
+//
+// #### Test
+// ```
+// pf = library("phaflangers.lib");
+// os = library("oscillators.lib");
+// chorus_stereo_test = os.osc(440), os.osc(660) : pf.chorus_stereo(4096, 4, 960, 0.5, 0.2, 0.5);
+// ```
+//
+// #### References
+//
+// * <https://ccrma.stanford.edu/~jos/pasp/Chorus_Effect.html>
+// * 'DAFX - Digital Audio Effects', 2nd ed., U. Zolzer (ed.), Wiley 2011,
+//   chapter 2 'Delay-based audio effects'
+//------------------------------------------------------------
+declare chorus_stereo author "David Braun";
+declare chorus_stereo license "MIT";
+
+chorus_stereo(dmax,voices,curdel,rate,depth,mix) =
+  chorus_mono(dmax,voices,0,curdel,rate,depth,mix),
+  chorus_mono(dmax,voices,ma.PI/2,curdel,rate,depth,mix);
