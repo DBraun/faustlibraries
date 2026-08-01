@@ -33,3 +33,11 @@ wfs_ui_test = os.osc(550)
 
 stereoize_test = (os.osc(660), os.osc(770))
   : sp.stereoize(+);
+
+crossfeed_test = (os.osc(220), os.osc(330)) : sp.crossfeed(700, 0.375, 0.0003);
+
+crossfeedBauer_test = (os.osc(220), os.osc(330)) : sp.crossfeedBauer;
+
+crossfeedLinkwitz_test = (os.osc(220), os.osc(330)) : sp.crossfeedLinkwitz;
+
+crossfeedSubtle_test = (os.osc(220), os.osc(330)) : sp.crossfeedSubtle;
