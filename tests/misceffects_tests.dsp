@@ -44,3 +44,13 @@ softclipQuadratic_test = os.osc(440) : ef.softclipQuadratic;
 wavefold_test = os.osc(440) : ef.wavefold(0.5);
 
 weightsPowerLoop_test = ef.mixingEnv.weightsPowerLoop(4, 1.2);
+
+freqshift_test = os.osc(8000) : ef.freqshift(6, 100, 500);
+
+freqshift6e_test = os.osc(8000) : ef.freqshift6e(100, 500);
+
+freqshiftQuad_test = os.osc(8000) : ef.freqshiftQuad(fi.pospass6e(100), 500);
+
+pingPongDelay_test = os.osc(440), os.osc(550) : ef.pingPongDelay(8192, 3000, 4500, 0.6, 1.0, 4000);
+
+leslie_test = os.osc(440) : ef.leslie(800, 6.7, 5.7, 0.18, 0.09);

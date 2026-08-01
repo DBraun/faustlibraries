@@ -65,7 +65,7 @@ aa = library("aanl.lib");
 ef = library("misceffects.lib"); // for compatible copy/paste out of this file
 
 declare name "Misc Effects Library";
-declare version "2.5.2"; 
+declare version "2.6.0"; 
 
 //======================================Dynamic===========================================
 //========================================================================================
@@ -961,6 +961,82 @@ with{
 
 // TODO demo function for echo
 
+//---------------------`(ef.)pingPongDelay`-----------------------
+// Stereo delay whose feedback path crosses the channels, so successive repeats
+// alternate between left and right.
+//
+// The feedback matrix is `fb * [[1-xfb, xfb], [xfb, 1-xfb]]`. That matrix is
+// symmetric and doubly stochastic for `xfb` in [0,1], so its induced 2-norm is
+// exactly `fb` and the loop is a strict contraction for every combination of
+// `fb` and `xfb`. Driving the straight and crossed paths from two independent
+// gains instead would place the in-phase eigenvalue at their *sum*, which
+// diverges as soon as it exceeds 1.
+//
+// Three further guards keep the loop bounded whatever the caller supplies:
+// `fb` is clamped strictly below 1; a Butterworth lowpass and a 20 Hz DC blocker
+// sit inside the loop, the latter making the loop gain at DC exactly zero so a
+// DC-offset input cannot wind the loop up; and the delay times are clamped into
+// `[2, maxDel-4]` so the 5-tap Lagrange interpolator always reads inside the
+// allocated delay line. In particular a negative delay time cannot collapse a
+// channel into a one-sample comb.
+//
+// The delay times and `damp` are ordinary signals and may be modulated at audio
+// rate: the delay lines interpolate with `de.fdelay4` and the lowpass is the
+// TPT `fi.svf`. The output is 100% wet; use `ef.dryWetMixer` to blend the dry
+// signal back in.
+//
+// #### Usage
+//
+// ```
+// _,_ : pingPongDelay(maxDel, delL, delR, fb, xfb, damp) : _,_
+// ```
+//
+// Where:
+//
+// * `maxDel`: maximum delay length in samples, a constant numerical expression
+// * `delL`: left delay length in samples, fractional and modulatable, clamped to `[2, maxDel-4]`
+// * `delR`: right delay length in samples, same range and constraints as `delL`
+// * `fb`: feedback amount, clamped to `[0, 0.99]`
+// * `xfb`: crossfeed amount, clamped to `[0, 1]`. 1 is a full ping-pong where every repeat swaps sides, 0 gives two independent delays, and 0.5 makes both channels share one repeat
+// * `damp`: cutoff frequency in Hz of the Butterworth lowpass inside the feedback loop, clamped to `[20, 0.49*ma.SR]`. Lower values make successive repeats progressively darker
+//
+// #### Example
+//
+// ```
+// _ <: ef.pingPongDelay(65536, 0.25*ma.SR, 0.375*ma.SR, 0.7, 1.0, 3000)
+// ```
+//
+// #### Test
+// ```
+// ef = library("misceffects.lib");
+// os = library("oscillators.lib");
+// pingPongDelay_test = os.osc(440), os.osc(550) : ef.pingPongDelay(8192, 3000, 4500, 0.6, 1.0, 4000);
+// ```
+//
+// #### References
+//
+// * <https://ccrma.stanford.edu/~jos/pasp/Feedback_Delay_Networks.html>
+// * <https://ccrma.stanford.edu/~jos/Interpolation/Time_Varying_Lagrange_Interpolation.html>
+//-----------------------------------------------------------------------------
+declare pingPongDelay author "David Braun";
+declare pingPongDelay copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare pingPongDelay license "MIT-style STK-4.3 license";
+
+pingPongDelay(maxDel, delL, delR, fb, xfb, damp) = loop ~ si.bus(2)
+with {
+    g  = max(0.0, min(0.99, fb));            // strictly below 1, so the loop contracts
+    x  = max(0.0, min(1.0, xfb));            // 0 = parallel delays, 1 = full ping-pong
+    fc = max(20.0, min(0.49*ma.SR, damp));   // keep tan(fc*PI/SR) finite in the TPT lowpass
+    dclip(d) = max(2.0, min(maxDel-4, d));   // 5-tap Lagrange needs d>=1.5 and d+2.5<=maxDel
+    // fi.dcblockerat, not fi.dcblocker: the latter is a fixed POLE, so its corner would
+    // scale with ma.SR (38 Hz at 48 kHz, 153 Hz at 192 kHz). Inside a feedback loop that
+    // is applied once per repeat, which would make the bass decay rate sample-rate
+    // dependent - measured at 11 dB of extra 200 Hz loss at 96 kHz.
+    tap(d) = de.fdelay4(maxDel, dclip(d)) : fi.svf.lp(fc, 1.0/sqrt(2.0)) : fi.dcblockerat(20.0);
+    loop(fbL, fbR, xL, xR) = tap(delL, xL + g*((1.0-x)*fbL + x*fbR)),
+                             tap(delR, xR + g*((1.0-x)*fbR + x*fbL));
+};
+
 //--------------------`(ef.)reverseEchoN`-------------------
 // Reverse echo effect.
 //
@@ -1155,6 +1231,123 @@ declare tapeStop author "David Braun";
 declare tapeStop copyright "Copyright (C) 2024 by David Braun <braun@ccrma.stanford.edu>";
 declare tapeStop license "MIT-style STK-4.3 license";
 
+
+//---------------------`(ef.)leslie`-------------------------------------------
+// Rotating-speaker (Leslie) cabinet: one input, two outputs.
+//
+// The input is split by a 4th-order Linkwitz-Riley crossover into a treble horn
+// and a bass drum. Each half is spun on its own rotor and picked up by two
+// virtual microphones placed 180 degrees apart around the cabinet; the two
+// rotors are then summed per microphone to give a stereo pair.
+//
+// Each rotor derives its Doppler delay, its directivity gain and its
+// angle-dependent lowpass from one and the same phasor, so pitch, amplitude and
+// timbre modulation keep the physically correct relative phase: the path is
+// shortest, the gain highest and the lowpass most open at the same instant, the
+// one at which the source faces that microphone.
+//
+// The Doppler depth is geometric rather than tuned by ear. A source on a circle
+// of radius `r` heard by a distant microphone lying in the direction `o` is at a
+// path length of `D - r*cos(theta - o)`, so the propagation delay swings by
+// `2*r/c` seconds peak to peak, with `c = 340` m/s. `hornRadius` and
+// `drumRadius` are therefore given in metres and converted to samples inside.
+//
+// Rotor inertia comes from smoothing the rate *signal* that drives the phasor
+// rather than smoothing the phase. A step of `hornRate` or `drumRate` then makes
+// the phasor frequency ramp exponentially instead of jumping, which is the
+// chorale-to-tremolo spin-up, and the much slower spin-down of the heavier bass
+// drum, of the real device. The time constants are 1 s for the horn and 3 s for
+// the drum, and both rotors start from rest.
+//
+// `hornRate` and `drumRate` should be kept independent and incommensurate
+// (6.7 Hz and 5.7 Hz for tremolo, 0.8 Hz and 0.7 Hz for chorale, for instance).
+// Made equal, the two rotors hold a fixed relative phase and the effect
+// collapses into a single coherent tremolo.
+//
+// The delay line is 1024 samples long, so `2*radius*ma.SR/340 + 2` has to stay
+// under 1016: a radius of up to 0.8 m is safe through 192 kHz, and up to 3.5 m
+// at 48 kHz. Larger values are clamped rather than allowed to wrap.
+//
+// This is a read-side interpolating delay: the delay length is varied at the
+// read pointer with a 5-tap Lagrange interpolator. The physically exact
+// treatment varies the *write* position and de-interpolates there, which the
+// block-diagram semantics of Faust cannot express, so what is implemented here
+// is an approximation. It reproduces the Doppler shift itself correctly but not
+// the write-side bandwidth change of a rapidly moving source.
+//
+// #### Usage
+//
+// ```
+// _ : leslie(xoverFreq, hornRate, drumRate, hornRadius, drumRadius) : _,_
+// ```
+//
+// Where:
+//
+// * `xoverFreq`: crossover frequency in Hz between bass drum and treble horn, clipped internally to [20, 0.45*ma.SR]. 800 is typical.
+// * `hornRate`: horn rotation rate in Hz, i.e. revolutions per second. About 0.8 for chorale and 6.7 for tremolo.
+// * `drumRate`: bass drum rotation rate in Hz. About 0.7 for chorale and 5.7 for tremolo. Keep it incommensurate with `hornRate`.
+// * `hornRadius`: radius of the horn rotor in metres, i.e. the distance from the rotation axis out to the horn mouth. 0.18 is typical. Must satisfy `2*hornRadius*ma.SR/340 + 2 < 1016`.
+// * `drumRadius`: radius of the bass drum rotor in metres. 0.09 is typical. Same bound as `hornRadius`.
+//
+// #### Example
+//
+// ```
+// // Fast (tremolo) setting of a typical cabinet.
+// process = ef.leslie(800, 6.7, 5.7, 0.18, 0.09);
+// ```
+//
+// #### Test
+// ```
+// ef = library("misceffects.lib");
+// os = library("oscillators.lib");
+// leslie_test = os.osc(440) : ef.leslie(800, 6.7, 5.7, 0.18, 0.09);
+// ```
+//
+// #### References
+//
+// * Julius O. Smith, Stefania Serafin, Jonathan S. Abel, David P. Berners, "Doppler Simulation and the Leslie", Proc. 5th Int. Conf. on Digital Audio Effects (DAFx-02), Hamburg, pp. 13-20, 2002.
+// * <https://ccrma.stanford.edu/~jos/doppler/>
+// * <https://en.wikipedia.org/wiki/Leslie_speaker>
+//-----------------------------------------------------------------------------
+
+
+declare leslie author "David Braun";
+declare leslie copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare leslie license "MIT-style STK-4.3 license";
+
+leslie(xoverFreq, hornRate, drumRate, hornRadius, drumRadius, x) =
+    (x : fi.highpassLR4(xover) : rotor(hornRate, HORN_TAU, hornRadius, 2.0*xover, HORN_AM)),
+    (x : fi.lowpassLR4(xover)  : rotor(drumRate, DRUM_TAU, drumRadius, 0.5*xover, DRUM_AM))
+    :> _,_
+with {
+    MAXDELAY = 1024;    // delay line length in samples, a compile-time constant
+    SOUNDSPEED = 340.0; // speed of sound in m/s
+    MINDELAY = 2.0;     // samples; must exceed (N-1)/2 = 1.5 for de.fdelay4
+    HORN_TAU = 1.0;     // horn spin-up/spin-down time constant in seconds
+    DRUM_TAU = 3.0;     // bass drum spin-up/spin-down time constant in seconds
+    HORN_AM = 0.30;     // horn directivity: gain swings 1 +/- 0.30 per revolution
+    DRUM_AM = 0.15;     // bass drum directivity, weaker because the drum beams less
+    xover = xoverFreq : max(20.0) : min(0.45*ma.SR);
+
+    // One rotor, picked up by two microphones 180 degrees apart. `fc0` sets the
+    // angle-dependent lowpass, which sweeps over [fc0, 2*fc0] once per revolution.
+    rotor(rate, tau, radius, fc0, am) = _ <: mic(0.0), mic(ma.PI)
+    with {
+        // Smoothing the RATE, not the phase, is what gives the rotor its inertia.
+        ph = os.phasor(1.0, rate : si.smooth(ba.tau2pole(tau)));
+        rs = (radius : max(0.0)) * ma.SR / SOUNDSPEED; // path-length swing in samples
+        d0 = rs + MINDELAY;
+        mic(o) = de.fdelay4(MAXDELAY, del) : *(gain) : fi.svf.lp(fc, 0.707)
+        with {
+            ang = 2.0*ma.PI*ph + o; // source angle as seen from this microphone
+            del = (d0 - rs*cos(ang)) : min(MAXDELAY - 8.0);
+            gain = 1.0 + am*cos(ang);
+            // fi.svf is TPT, so its cutoff may be modulated at every sample.
+            fc = fc0*(1.5 + 0.5*cos(ang)) : min(0.45*ma.SR);
+        };
+    };
+};
+
 //=======================================Pitch Shifting===================================
 //========================================================================================
 
@@ -1227,6 +1420,186 @@ with {
     phasor = os.phasor(1, phasor_freq);
     delay_samples = (2 - phasor) * period_samples;
 };
+
+//--------------`(ef.)freqshift`----------------
+// Single-sideband frequency shifter: every partial of the input is moved by the
+// same number of Hz, up for positive `df` and down for negative `df`. The input
+// is turned into an analytic signal with the Butterworth positive-pass filter
+// `(fi.)pospass(N,fc)`, rotated by a quadrature oscillator, and the real part is
+// kept.
+//
+// Frequency shifting is **not** pitch shifting. The offset is additive, not
+// multiplicative, so harmonic material becomes inharmonic: measured at
+// `ma.SR = 48000`, a 800/1600/2400/3200 Hz harmonic series through
+// `freqshift6e(100,100)` comes out as 900/1700/2500/3300 Hz, no longer a
+// harmonic series and no longer perceived as one pitch. For ratio-based
+// (musical) shifting see `(ef.)transpose` and `(ef.)doppler_shift`.
+//
+// #### Usage
+//
+// ```
+// _ : freqshift(N,fc,df) : _
+// ```
+//
+// Where:
+//
+// * `N`: order of the Butterworth half-band lowpass inside `(fi.)pospass`, a constant numerical expression
+// * `fc`: lower passband edge in Hz of `(fi.)pospass`, a constant numerical expression
+//   - the analytic passband is `fc` to `ma.SR/2 - fc` Hz
+// * `df`: frequency shift in Hz, positive shifts up; may vary at signal rate
+//
+// Note: the passband gain is unity, measured 0.00 dB at 8 kHz with `fc = 100`
+// at 48 kHz. This is `freqshiftQuad` with its quadrature output dropped.
+//
+// #### Unwanted sideband
+//
+// A frequency shifter built this way leaks a mirror image: a partial at `f`
+// produces the wanted `f+df` plus an unwanted `f-df`. Rejection of that image is
+// the accuracy of the analytic filter and depends strongly on `f`, `fc` and
+// `ma.SR`. Measured with a unit-amplitude sine, `fc = 100`, `df = +100`,
+// `ma.SR = 48000` Hz (image level relative to the wanted output):
+//
+// ```
+//   input:              120Hz   780Hz   1.75kHz   3.9kHz   5.9kHz   12kHz   17.7kHz   21kHz
+//   freqshift(6,...):   -0.9dB  -5.7dB  -12.6dB  -28.8dB  -45.6dB  -181dB   -49.7dB  -21.5dB
+//   freqshift6e(...):   -0.9dB  -8.9dB  -22.8dB  -53.7dB  -80.9dB  -79.8dB  -87.4dB  -39.2dB
+// ```
+//
+// (anything below about -160 dB is at the double-precision measurement floor.)
+//
+// The floor of the elliptic version, about -80 dB, is the stopband of
+// `(fi.)lowpass6e`; it is reached for partials between roughly `ma.SR/8 - 1.5*fc`
+// and `3*ma.SR/8 + 1.5*fc` (verified at 48 and 96 kHz for `fc` = 100 and 1000 Hz).
+// Rejection is centered on `ma.SR/4`, so **the same `fc` performs worse at a
+// higher sample rate**: at 96 kHz the 8 kHz image is only -54 dB down instead of
+// -80 dB.
+//
+// #### Guard band
+//
+// `fc` is a guard band, not just a cutoff. Below it the two sidebands come out
+// at nearly equal level and the effect degenerates into ring modulation: with
+// `fc = 100` at 48 kHz, a 120 Hz input emerges as 220 Hz and 20 Hz within 1 dB of
+// each other. Raising `fc` buys rejection at the price of low-frequency response:
+// for `freqshift(6,fc,df)` at 48 kHz, going from `fc = 100` to `fc = 1000` improves
+// the 1.17 kHz image from -8.5 dB to -12.5 dB at a cost of 3.2 dB of passband gain at
+// 520 Hz. The elliptic `freqshift6e` gains more from the same change, -14.6 dB to
+// -26.9 dB for 3.5 dB of gain at 520 Hz.
+//
+// Partials pushed below 0 Hz by a negative `df` fold back up: measured, a 1 kHz
+// input with `df = -1500` comes out at 500 Hz (-0.2 dB).
+//
+// #### Example
+//
+// ```
+// // dry plus a copy shifted up 3 Hz: a comb that sweeps endlessly upward
+// process = _ <: _, ef.freqshift6e(100, 3) :> *(0.5);
+// ```
+//
+// #### Test
+// ```
+// ef = library("misceffects.lib");
+// os = library("oscillators.lib");
+// freqshift_test = os.osc(8000) : ef.freqshift(6, 100, 500);
+// ```
+//
+// #### References
+//
+// * <https://ccrma.stanford.edu/~jos/mdft/Analytic_Signals_Hilbert_Transform.html>
+// * <https://en.wikipedia.org/wiki/Single-sideband_modulation>
+// * <https://en.wikipedia.org/wiki/Frequency_shifter>
+//-----------------------------------------
+declare freqshift author "David Braun";
+declare freqshift copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare freqshift license "MIT-style STK-4.3 license";
+freqshift(N,fc,df) = freqshiftQuad(fi.pospass(N,fc),df) : _,!;
+
+//--------------`(ef.)freqshift6e`----------------
+// Single-sideband frequency shifter using the order 6 elliptic positive-pass
+// filter `(fi.)pospass6e`, which rejects the unwanted sideband far better than
+// `freqshift(6,fc,df)` for the same number of biquads. This is the recommended
+// form; see `(ef.)freqshift` for the measured numbers and for why frequency
+// shifting is not pitch shifting.
+//
+// #### Usage
+//
+// ```
+// _ : freqshift6e(fc,df) : _
+// ```
+//
+// Where:
+//
+// * `fc`: lower passband edge in Hz of `(fi.)pospass6e`, a constant numerical expression
+//   - the analytic passband is `fc` to `ma.SR/2 - fc` Hz
+// * `df`: frequency shift in Hz, positive shifts up; may vary at signal rate
+//
+// #### Test
+// ```
+// ef = library("misceffects.lib");
+// os = library("oscillators.lib");
+// freqshift6e_test = os.osc(8000) : ef.freqshift6e(100, 500);
+// ```
+//
+// #### References
+//
+// * <https://ccrma.stanford.edu/~jos/mdft/Analytic_Signals_Hilbert_Transform.html>
+// * <https://en.wikipedia.org/wiki/Single-sideband_modulation>
+//-----------------------------------------
+declare freqshift6e author "David Braun";
+declare freqshift6e copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare freqshift6e license "MIT-style STK-4.3 license";
+freqshift6e(fc,df) = freqshiftQuad(fi.pospass6e(fc),df) : _,!;
+
+//--------------`(ef.)freqshiftQuad`----------------
+// Frequency shifter with quadrature outputs: the shifted signal and its Hilbert
+// transform. It is the shifter that `(ef.)freqshift` and `(ef.)freqshift6e` are
+// built from, with the analytic filter left as a parameter, in the same way that
+// `(fi.)pospass0` leaves the half-band lowpass as a parameter.
+//
+// The two outputs are the real and imaginary parts of the shifted analytic
+// signal, measured at 48 kHz to be equal in magnitude (ratio 1.000000) and 90
+// degrees apart (-90.0000 degrees) wherever the analytic filter rejects the
+// image. That makes it the substrate for barberpole phasing, feedback shifter
+// drones, and stereo spread: the pair can be re-rotated, fed back, or panned.
+//
+// #### Usage
+//
+// ```
+// _ : freqshiftQuad(ssbf,df) : _,_
+// ```
+//
+// Where:
+//
+// * `ssbf`: an analytic (positive-pass) filter of shape `_ : ssbf : _,_`, e.g. `(fi.)pospass(N,fc)` or `(fi.)pospass6e(fc)`
+// * `df`: frequency shift in Hz, positive shifts up; may vary at signal rate
+//
+// Outputs: the frequency-shifted signal and its Hilbert transform. The analytic
+// pair is scaled by 2, so a partial inside the passband of `ssbf` comes out at
+// unit gain.
+//
+// #### Example
+//
+// ```
+// // shifted signal in one channel, its 90-degrees partner in the other
+// process = ef.freqshiftQuad(fi.pospass6e(100), 50);
+// ```
+//
+// #### Test
+// ```
+// ef = library("misceffects.lib");
+// fi = library("filters.lib");
+// os = library("oscillators.lib");
+// freqshiftQuad_test = os.osc(8000) : ef.freqshiftQuad(fi.pospass6e(100), 500);
+// ```
+//
+// #### References
+//
+// * <https://ccrma.stanford.edu/~jos/mdft/Analytic_Signals_Hilbert_Transform.html>
+// * <https://vicanek.de/articles/QuadOsc.pdf>
+//-----------------------------------------
+declare freqshiftQuad author "David Braun";
+declare freqshiftQuad copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare freqshiftQuad license "MIT-style STK-4.3 license";
+freqshiftQuad(ssbf,df,x) = (os.quadosc(df), (x : ssbf : *(2), *(2))) : si.cmul;
 
 //=======================================Saturators=======================================
 //========================================================================================

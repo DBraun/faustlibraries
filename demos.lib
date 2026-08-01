@@ -77,7 +77,7 @@ mo = library("motion.lib");
 hy = library("hysteresis.lib");
 
 declare name "Faust Demos Library";
-declare version "1.4.0";
+declare version "1.5.0";
 
 //########################################################################################
 /************************************************************************
@@ -710,6 +710,65 @@ with {
     stopAlpha = hslider("[2] Stop Alpha [style:knob][tooltip:Alpha==1 represents a linear deceleration (constant force). Alpha<1 represents an initially weaker, then stronger force. Alpha>1 represents an initially stronger, then weaker force.]", 1, MIN_ALPHA, MAX_ALPHA, .01);
     gainAlpha = hslider("[3] Gain Alpha [style:knob][tooltip:During the tape-stop, lower alpha stays louder longer]", 1, MIN_ALPHA, MAX_ALPHA, .01);
     crossfade = hslider("[4] Crossfade [style:knob][unit:ms][tooltip:Crossfade to apply when resuming normal playback.]", 3, 0, 125, 1) : msec2samp;
+};
+
+//-------------------------`(dm.)leslie_demo`---------------------------
+// Rotating-speaker (Leslie) cabinet demo application.
+//
+// The speed control is deliberately *not* smoothed here: `ef.leslie` gives each
+// rotor its own inertia by smoothing the rate signal internally, so flipping
+// "Tremolo" produces the characteristic spin-up ramp on its own, fast for the
+// horn and slow for the drum. The drum rate is set as a ratio of the horn rate
+// so that the two rotors stay incommensurate at every speed.
+//
+// #### Usage
+//
+// ```
+// _ : leslie_demo : _,_
+// ```
+//
+// #### Test
+// ```
+// dm = library("demos.lib");
+// os = library("oscillators.lib");
+// monoOsc(freq) = os.osc(freq);
+// leslie_demo_test = monoOsc(440) : dm.leslie_demo;
+// ```
+//------------------------------------------------------------
+
+declare leslie_demo author "David Braun";
+declare leslie_demo copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare leslie_demo license "MIT-style STK-4.3 license";
+
+leslie_demo = hgroup("Leslie", ef.leslie(xover, hornRate, drumRate, hornRadius, drumRadius))
+with {
+    speed_group(x) = vgroup("[0] Rotation", x);
+    cab_group(x) = vgroup("[1] Cabinet", x);
+
+    fast = speed_group(checkbox("[0] Tremolo [tooltip: Unchecked is chorale (slow),
+        checked is tremolo (fast). The rotors ramp between the two speeds with
+        their own inertia, so this control is intentionally left unsmoothed]"));
+    hornSlow = speed_group(hslider("[1] Horn Chorale [unit:Hz][style:knob]
+        [tooltip: Horn revolutions per second in the slow position]",
+        0.8, 0.1, 2, 0.01));
+    hornFast = speed_group(hslider("[2] Horn Tremolo [unit:Hz][style:knob]
+        [tooltip: Horn revolutions per second in the fast position]",
+        6.7, 2, 10, 0.01));
+    drumRatio = speed_group(hslider("[3] Drum Ratio [style:knob]
+        [tooltip: Drum rate divided by horn rate. Keep it away from simple
+        fractions so the two rotors never phase-lock]", 0.85, 0.5, 1.5, 0.001));
+    hornRate = ba.if(fast, hornFast, hornSlow);
+    drumRate = hornRate * drumRatio;
+
+    xover = cab_group(hslider("[0] Crossover [unit:Hz][style:knob][scale:log]
+        [tooltip: Split frequency between the bass drum and the treble horn]",
+        800, 100, 4000, 1)) : si.smoo;
+    hornRadius = cab_group(hslider("[1] Horn Radius [unit:m][style:knob]
+        [tooltip: Rotation axis to horn mouth, in metres. Sets the Doppler depth
+        of the treble rotor]", 0.18, 0.02, 0.5, 0.001)) : si.smoo;
+    drumRadius = cab_group(hslider("[2] Drum Radius [unit:m][style:knob]
+        [tooltip: Rotation axis to bass source, in metres. Sets the Doppler depth
+        of the bass rotor]", 0.09, 0.02, 0.5, 0.001)) : si.smoo;
 };
 
 //======================================Reverbs===========================================
