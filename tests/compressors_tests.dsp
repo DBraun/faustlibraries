@@ -39,3 +39,5 @@ limiter_lad_mono_test = os.osc(440) : co.limiter_lad_mono(0.01, 1, 0.01, 0.05, 0
 limiter_lad_stereo_test = (os.osc(440), os.osc(660)) : co.limiter_lad_stereo(0.01, 1, 0.01, 0.05, 0.2);
 limiter_lad_quad_test = (os.osc(220), os.osc(330), os.osc(440), os.osc(550)) : co.limiter_lad_quad(0.01, 1, 0.01, 0.05, 0.2);
 limiter_lad_bw_test = os.osc(440) : co.limiter_lad_bw;
+
+truePeakLimiter_test = (os.osc(440), os.osc(660)) : co.truePeakLimiter(2, 64, 0.891, 0.05);

@@ -32,7 +32,7 @@ os = library("oscillators.lib");
 an = library("analyzers.lib"); // for compatible copy/paste out of this file
 
 declare name "Faust Analyzer Library";
-declare version "1.3.0";
+declare version "1.4.0";
 
 /************************************************************************
 FAUST library file, jos section
@@ -546,6 +546,117 @@ declare zcr copyright "Copyright (C) 2020 Dario Sanfilippo
 declare zcr license "MIT-style STK-4.3 license";
 zcr(period, x) = ma.zc(x) : fi.lptau(period);
 
+
+//-----------------------`(an.)truePeak`---------------------------------------
+// True-peak (inter-sample peak) detector built on the order-48, 4-phase interpolating
+// FIR of Recommendation ITU-R BS.1770, Annex 2, with ONE DELIBERATE DEVIATION from
+// the Recommendation, described below: the sample instants are included in the
+// maximum. This is a safety-oriented detector, not a conformance meter. It never
+// reads lower than a strictly conformant Annex 2 implementation and can read up to
+// about 0.8 dB higher, so do not expect it to agree sample-for-sample with a
+// certified BS.1770 meter; use it to keep a signal under a ceiling, not to report
+// a compliance figure.
+//
+// The signal is upsampled by four and the output is the largest absolute value
+// among the four sub-samples that belong to the current input sample. The four
+// polyphase branches *are* the four 4x sub-samples, so no rate conversion is
+// involved: one estimate is produced per input sample, at the base sample rate.
+//
+// The 12.04 dB attenuate-then-restore step of Annex 2 exists only to give
+// fixed-point arithmetic some headroom. It is a no-op in floating point and is
+// omitted here.
+//
+// One deliberate departure from a literal reading of Annex 2: the interpolating
+// prototype is 48 taps symmetric about 23.5, so its four polyphase branches sample
+// the reconstruction on a 0.25-sample grid offset by 1/8 of a sample, and never at
+// an integer sample instant. Annex 2 alone can therefore report a value *below*
+// `max(abs(x))`, which contradicts the definition of true peak as the maximum of the
+// continuous waveform (that waveform passes through every sample value). The sample
+// magnitude is included in the maximum here, so the reading is never below the sample
+// peak and is never further from the true peak than the Annex 2 grid alone.
+//
+// The practical consequence: on material where the 4x grid alone under-reads the
+// sample peak, this function reports a higher value than a strictly conformant
+// implementation. Measured on a full-scale alternating (Nyquist) signal, Annex 2
+// alone reads 1.826 against a sample peak of 2.0 while this reads 2.0, a difference
+// of 0.79 dB. Without the sample term, `(co.)truePeakLimiter` overshot its ceiling
+// by that same 0.79 dB, which is what motivated the deviation.
+//
+// The output is an instantaneous estimate, not a hold, so route it through
+// `ba.peakholder`, `an.amp_follower_ar` or `ba.linear2db` (for dBTP) as the
+// application requires. It lags the input by 5.125 to 5.875 samples, the four
+// branches corresponding to 23.5, 23.5-1, 23.5-2 and 23.5-3 samples of group
+// delay at the 4x rate.
+//
+// Accuracy of the 4x method, measured on this coefficient set. The four branch
+// magnitude responses are flat within +0.22/-0.24 dB up to 0.417*ma.SR, so a
+// reading can be up to about 0.22 dB high. Conversely the reconstruction is
+// only sampled on a 4x grid, so a crest falling between two grid points reads
+// low by up to `1-cos(ma.PI*f/(4*ma.SR))`, which is 0.12 dB at 10 kHz and
+// 0.47 dB at 20 kHz when `ma.SR` is 48000. Leave at least 1 dB of headroom
+// below 0 dBFS if the reading is used to guarantee a ceiling.
+//
+// The Annex 2 table is specified for a 48 kHz sample rate, where 4x produces
+// the 192 kHz effective peak-sampling grid the Recommendation targets. At
+// 44.1 kHz the same table produces only 176.4 kHz, so the estimate is slightly
+// optimistic. At 96 kHz, Annex 2 specifies a 2x (order-24) table instead;
+// using this 4x table there is harmless but is not the specified filter. At
+// 192 kHz and above, BS.1770 requires no oversampling at all.
+//
+// #### Usage
+//
+// ```
+// _ : truePeak : _
+// ```
+//
+// #### Example
+//
+// ```
+// // true-peak level in dBTP, held for 100 ms
+// _ : an.truePeak : ba.peakholder(ba.sec2samp(0.1)) : ba.linear2db
+// ```
+//
+// #### Test
+// ```
+// an = library("analyzers.lib");
+// os = library("oscillators.lib");
+// truePeak_test = os.osc(440) : an.truePeak;
+// ```
+//
+// #### References
+//
+// * <https://www.itu.int/rec/R-REC-BS.1770>
+// * Recommendation ITU-R BS.1770-5 (11/2023), Annex 2, Table 3 (order 48, 4-phase, FIR interpolating filter)
+//---------------------------------------------------------
+
+declare truePeak author "David Braun";
+declare truePeak copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare truePeak license "MIT-style STK-4.3 license";
+truePeak(x) = max(max(max(sub0, sub1), max(sub2, sub3)), samp)
+with {
+    // The Annex 2 prototype is 48 taps symmetric about 23.5, so its four polyphase
+    // branches evaluate the reconstruction at base-rate offsets -5.875, -5.625,
+    // -5.375 and -5.125: a 0.25-sample grid that never lands on a sample instant.
+    // The sample values themselves lie on the reconstructed waveform, so they are
+    // included here; without them the estimate can fall below the sample peak.
+    samp = abs(x @ 6);
+    sub0 = x : fi.fir((0.0017089843750, 0.0109863281250, -0.0196533203125,
+                       0.0332031250000, -0.0594482421875, 0.1373291015625,
+                       0.9721679687500, -0.1022949218750, 0.0476074218750,
+                       -0.0266113281250, 0.0148925781250, -0.0083007812500)) : abs;
+    sub1 = x : fi.fir((-0.0291748046875, 0.0292968750000, -0.0517578125000,
+                       0.0891113281250, -0.1665039062500, 0.4650878906250,
+                       0.7797851562500, -0.2003173828125, 0.1015625000000,
+                       -0.0582275390625, 0.0330810546875, -0.0189208984375)) : abs;
+    sub2 = x : fi.fir((-0.0189208984375, 0.0330810546875, -0.0582275390625,
+                       0.1015625000000, -0.2003173828125, 0.7797851562500,
+                       0.4650878906250, -0.1665039062500, 0.0891113281250,
+                       -0.0517578125000, 0.0292968750000, -0.0291748046875)) : abs;
+    sub3 = x : fi.fir((-0.0083007812500, 0.0148925781250, -0.0266113281250,
+                       0.0476074218750, -0.1022949218750, 0.9721679687500,
+                       0.1373291015625, -0.0594482421875, 0.0332031250000,
+                       -0.0196533203125, 0.0109863281250, 0.0017089843750)) : abs;
+};
 
 //==============================Adaptive Frequency Analysis===============================
 //========================================================================================

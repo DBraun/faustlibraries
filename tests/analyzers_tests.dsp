@@ -50,3 +50,5 @@ ifft_test = (an.rtocv(8, mono) : an.fft(8)) : an.ifft(8);
 
 logsweep_test = an.logsweep(20, 2000, 5);
 linsweep_test = an.linsweep(20, 2000, 5);
+
+truePeak_test = os.osc(440) : an.truePeak;

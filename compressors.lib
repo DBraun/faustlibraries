@@ -59,7 +59,7 @@ ma = library("maths.lib");
 it = library("interpolators.lib");
 
 declare name "Faust Compressor Effect Library";
-declare version "1.6.0";
+declare version "1.7.0";
 
 //================================Conversion Tools=======================================
 // Most compressors have a ratio parameter to define the amount of compression.
@@ -1539,4 +1539,89 @@ declare limiter_lad_bw license "GPLv3 license";
 limiter_lad_bw = limiter_lad_mono(.01, 1, 0.01/twopi, .1, 1/twopi)
 with {
     twopi = 2 * ma.PI;
+};
+
+
+//-----------------------`(co.)truePeakLimiter`--------------------------------
+// N-channel lookahead limiter whose detector is the ITU-R BS.1770 true-peak
+// estimator `an.truePeak`, so that `ceiling` constrains the inter-sample peak
+// of the reconstructed waveform rather than merely the sample peak. Every other
+// limiter in this library is sample-peak, and a signal limited to -0.1 dBFS by
+// a sample-peak limiter can still reconstruct several dB above 0 dBFS.
+//
+// The gain path is: true-peak detection on every channel, channel-linked
+// maximum, required gain reduction against `ceiling`, a sliding maximum of that
+// reduction over `LDsamples+1` samples (which provides the hold), a rectangular
+// sliding mean over `LDsamples-6` samples (which provides a click-free attack ramp),
+// and a release smoother that only slows the return towards unity gain.
+//
+// Cascading a sliding maximum of `LDsamples+1` samples with a sliding mean of `LDsamples-6`
+// samples is what makes the limiter exact: every term of the mean covers the
+// detector output for the sample being written, so the applied gain is
+// provably no larger than the gain the detector asks for anywhere in the
+// corresponding lookahead region. `6` is the integer bound on the 5.125 to
+// 5.875 sample group delay of `an.truePeak`, which is why `LDsamples` must be at
+// least 8. All channels share one gain, so their relative levels are preserved.
+//
+// The limiter is exact with respect to the BS.1770 4x estimate. The estimate
+// itself can read low for content near Nyquist, so a ceiling of -1 dBTP is a
+// safer target than -0.1 dBTP. See `an.truePeak` for the measured accuracy of
+// the estimator and for its sample-rate caveats: the Annex 2 table is
+// specified for 48 kHz, is slightly optimistic at 44.1 kHz, and is not the
+// table Annex 2 specifies for 96 kHz and above.
+//
+// #### Usage
+//
+// ```
+// si.bus(N) : truePeakLimiter(N, LDsamples, ceiling, release) : si.bus(N)
+// ```
+//
+// Where:
+//
+// * `N`: number of channels, a constant numerical expression
+// * `LDsamples`: lookahead delay in samples, a constant numerical expression, at least 7 (enforced: a smaller value fails to compile rather than silently letting onsets through) and 32 or more in practice (64 to 512 are typical). It is given in samples, not seconds, so that it does not silently change meaning with the compile-time sample rate
+// * `ceiling`: linear amplitude ceiling for the true peak, for example `ba.db2linear(-1)` for -1 dBTP
+// * `release`: release time constant tau in seconds, the time for the gain reduction to fall to `1/e` of its value
+//
+// #### Example
+//
+// ```
+// // stereo -1 dBTP brickwall with 128 samples of lookahead
+// _,_ : co.truePeakLimiter(2, 128, ba.db2linear(-1), 0.1) : _,_
+// ```
+//
+// #### Test
+// ```
+// co = library("compressors.lib");
+// os = library("oscillators.lib");
+// truePeakLimiter_test = (os.osc(440), os.osc(660)) : co.truePeakLimiter(2, 64, 0.891, 0.05);
+// ```
+//
+// #### References
+//
+// * <https://www.itu.int/rec/R-REC-BS.1770>
+// * <https://tech.ebu.ch/publications/r128>
+//------------------------------------------------------------------------------
+declare truePeakLimiter author "David Braun";
+declare truePeakLimiter copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare truePeakLimiter license "MIT-style STK-4.3 license";
+truePeakLimiter(N, LDsamples, ceiling, release) =
+    si.bus(N) <: (par(i, N, @(LDsamples)), (gainProfile <: si.bus(N)))
+              : ro.interleave(N, 2) : par(i, N, *)
+with {
+    dly = 6;                        // integer bound on the an.truePeak group delay
+    hld = int(LDsamples + 1);              // sliding-maximum (hold) window, samples
+    att = int(LDsamples - dly);     // sliding-mean (attack ramp) window, samples.
+                                    // No max() guard on purpose: LDsamples < 7 must fail to
+                                    // compile rather than silently pass onsets unlimited.
+    gainProfile = par(i, N, an.truePeak) : maxN(N) : reduction
+                : ba.slidingMax(hld, hld) : ba.slidingMeanp(att, att)
+                : relSmooth : (1.0 - _);
+    reduction(tp) = 1.0 - min(1.0, ceiling / max(ma.EPSILON, tp));
+    relSmooth(r) = max(r) ~ (*(pole) : +(r * (1.0 - pole)))
+    with {
+        pole = ba.tau2pole(max(ma.EPSILON, release));
+    };
+    maxN(1) = _;
+    maxN(K) = max(maxN(K - 1));
 };
