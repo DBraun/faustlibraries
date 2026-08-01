@@ -53,7 +53,7 @@ fi = library("filters.lib"); // for compatible copy/paste out of this file
 la = library("linearalgebra.lib");
 
 declare name "Faust Filters Library";
-declare version "1.7.1";
+declare version "1.8.0";
 
 //===============================Basic Filters============================================
 //========================================================================================
@@ -2966,6 +2966,123 @@ pospass0(lpf) = unmodulate : lpf, lpf : modulate with {
   modulate(x,y) = c*x-s*y, c*y + s*x; // add SR/4 to all frequencies
 };
 
+
+//------------------------`(fi.)hilbert`---------------------------
+// Quadrature (imaginary) branch of `pospass(N,fc)`, scaled by 2 so that the
+// passband gain is 1. It is 90 degrees from the *in-phase* branch of the same
+// filter, `pospass(N,fc) : *(2),!`, and NOT from the raw input: `pospass` is a
+// bandpass, so it shifts the in-phase path too. Pairing this output with the
+// unfiltered input, as in `_ <: _, fi.hilbert(6,fc)`, does not give a usable
+// analytic signal. For an analytic pair take both outputs of `pospass`, and for
+// single-sideband frequency shifting use `(ef.)freqshift`, which does exactly that.
+//
+// #### Usage
+//
+// ```
+// _ : hilbert(N,fc) : _
+// ```
+//
+// Where:
+//
+// * `N`: order of the Butterworth half-band lowpass used by `pospass`, a constant numerical expression
+// * `fc`: lower passband edge in Hz, a constant numerical expression
+//   - the passband is `fc` to `ma.SR/2 - fc` Hz
+//
+// #### Method
+//
+// `hilbert(N,fc) = pospass(N,fc) : !, *(2)`, the approximation documented under
+// `pospass`. The output is in quadrature with the in-phase output of the same
+// filter, `pospass(N,fc) : *(2), !`, and *not* with the raw input: both outputs
+// carry the phase response of the underlying bandpass, so the pair is a relative
+// phase splitter, like an analog Hilbert network. Whenever absolute phase
+// matters, take both outputs of `pospass` (see `(ef.)freqshift`).
+//
+// Quadrature accuracy measured at `ma.SR = 48000` Hz with `N = 6`, `fc = 100`,
+// comparing `hilbert(6,100)` against `pospass(6,100) : *(2),!`
+// (ideal: magnitude ratio 1, phase difference -90 degrees):
+//
+// ```
+//   input:      780Hz   1.75kHz   2.6kHz   3.9kHz   5.9kHz   12kHz   17.7kHz
+//   mag ratio:   3.07      1.60     1.25     1.08     1.01    1.000     1.01
+//   phase:     -102.1     -93.3    -91.2    -90.3    -90.0   -90.00    -90.0
+// ```
+//
+// The error is zero at `ma.SR/4` (measured 1.000000 and -90.0000 degrees) and
+// grows toward DC and Nyquist, so the useful band is centered on `ma.SR/4` and a
+// given absolute frequency is treated *worse* at a higher sample rate. Raising
+// `N` helps only slowly (measured at 1.2 kHz, the residual image in
+// `(ef.)freqshift` improves by about 1.45 dB per order); `hilbert6e` is better
+// everywhere except close to `ma.SR/4`, by as much as 25 dB of image rejection
+// at `ma.SR/12`.
+//
+// #### Test
+// ```
+// fi = library("filters.lib");
+// os = library("oscillators.lib");
+// hilbert_test = os.osc(440) : fi.hilbert(6, 100);
+// ```
+//
+// #### References
+//
+// * <https://ccrma.stanford.edu/~jos/mdft/Analytic_Signals_Hilbert_Transform.html>
+// * <https://ccrma.stanford.edu/~jos/sasp/Hilbert_Transform.html>
+//------------------------------------------------------------
+declare hilbert author "Julius O. Smith III, David Braun";
+declare hilbert copyright "Copyright (C) 2003-2019 by Julius O. Smith III <jos@ccrma.stanford.edu>, revised by David Braun";
+declare hilbert license "MIT-style STK-4.3 license";
+hilbert(N,fc) = fi.pospass(N,fc) : !, *(2);
+
+//------------------------`(fi.)hilbert6e`---------------------------
+// Approximate Hilbert transform based on the order 6 elliptic positive-pass
+// filter `pospass6e`, i.e. `hilbert` with a steeper half-band lowpass for the
+// same number of biquads.
+//
+// #### Usage
+//
+// ```
+// _ : hilbert6e(fc) : _
+// ```
+//
+// Where:
+//
+// * `fc`: lower passband edge in Hz, a constant numerical expression
+//   - the passband is `fc` to `ma.SR/2 - fc` Hz
+//
+// #### Method
+//
+// `hilbert6e(fc) = pospass6e(fc) : !, *(2)`. See `hilbert` for what the
+// quadrature output does and does not guarantee. Accuracy against
+// `pospass6e(fc) : *(2),!` at `ma.SR = 48000` Hz with `fc = 100`
+// (ideal: magnitude ratio 1, phase difference -90 degrees):
+//
+// ```
+//   input:      780Hz   1.75kHz   2.6kHz   3.9kHz   5.9kHz   12kHz   17.7kHz
+//   mag ratio:  0.591     0.907    0.983    1.000    1.000    1.000    1.000
+//   phase:     -118.0     -96.1    -91.9    -90.2    -90.0    -90.0    -90.0
+// ```
+//
+// This is a better quadrature approximation than `hilbert(6,fc)` at every
+// frequency except in a band around `ma.SR/4`, where the Butterworth version is
+// essentially exact: at `ma.SR/12` it rejects the unwanted sideband of
+// `(ef.)freqshift` by 25 dB more. The 0.2 dB passband ripple of `lowpass6e`
+// shows up as a 0.2 dB magnitude ripple.
+//
+// #### Test
+// ```
+// fi = library("filters.lib");
+// os = library("oscillators.lib");
+// hilbert6e_test = os.osc(440) : fi.hilbert6e(100);
+// ```
+//
+// #### References
+//
+// * <https://ccrma.stanford.edu/~jos/mdft/Analytic_Signals_Hilbert_Transform.html>
+// * <https://ccrma.stanford.edu/~jos/sasp/Hilbert_Transform.html>
+//------------------------------------------------------------
+declare hilbert6e author "Julius O. Smith III, David Braun";
+declare hilbert6e copyright "Copyright (C) 2003-2019 by Julius O. Smith III <jos@ccrma.stanford.edu>, revised by David Braun";
+declare hilbert6e license "MIT-style STK-4.3 license";
+hilbert6e(fc) = fi.pospass6e(fc) : !, *(2);
 
 //=================Parametric Equalizers (Shelf, Peaking)=================================
 // Parametric Equalizers (Shelf, Peaking).
