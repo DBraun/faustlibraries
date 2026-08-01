@@ -41,3 +41,7 @@ limiter_lad_quad_test = (os.osc(220), os.osc(330), os.osc(440), os.osc(550)) : c
 limiter_lad_bw_test = os.osc(440) : co.limiter_lad_bw;
 
 truePeakLimiter_test = (os.osc(440), os.osc(660)) : co.truePeakLimiter(2, 64, 0.891, 0.05);
+
+transientShaper_test = os.osc(440) : co.transientShaper(0.005, 0.05, 12, 6, -3);
+
+transientShaper_N_chan_test = (os.osc(440), os.osc(660), os.osc(880)) : co.transientShaper_N_chan(0.005, 0.05, 12, 6, -3, 3);

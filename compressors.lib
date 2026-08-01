@@ -5,7 +5,7 @@
 // This library provides building blocks and complete dynamic processors
 // including compressors, limiters, expanders, and gates.
 //
-// The Compressors library is organized into 6 sections:
+// The Compressors library is organized into 7 sections:
 //
 // * [Conversion Tools](#conversion-tools)
 // * [Functions Reference](#functions-reference)
@@ -13,6 +13,7 @@
 // * [Original versions section](#original-versions-section)
 // * [Expanders](#expanders)
 // * [Lookahead Limiters](#lookahead-limiters)
+// * [Transient Shapers](#transient-shapers)
 // 
 // #### References
 //
@@ -57,6 +58,7 @@ an = library("analyzers.lib");
 ro = library("routes.lib");
 ma = library("maths.lib");
 it = library("interpolators.lib");
+rm = library("reducemaps.lib");
 
 declare name "Faust Compressor Effect Library";
 declare version "1.7.0";
@@ -1624,4 +1626,131 @@ with {
     };
     maxN(1) = _;
     maxN(K) = max(maxN(K - 1));
+};
+
+
+//==============================Transient Shapers=========================================
+// Threshold-free, level-independent dynamics. Instead of comparing the signal level to a
+// threshold, a transient shaper compares a fast and a slow *average* envelope of the
+// signal with each other and uses the dB difference between them to drive independent
+// attack and sustain gains.
+//========================================================================================
+
+//--------------------`(co.)transientShaper`-------------------
+// Threshold-free transient shaper: independent attack and sustain gain for a mono signal,
+// driven by the difference between a fast and a slow average envelope.
+//
+// Both envelopes are one-pole averages of `abs(x)` ([`(an.)abs_envelope_tau`](https://faustlibraries.grame.fr/libs/analyzers/#anabs_envelope_tau)),
+// so on steady material they converge to the *same* value and their dB difference `d`
+// settles at zero. `d` is therefore non-zero only where the envelope *shape* changes: it
+// is positive while the envelope rises (an onset) and negative while it falls (a decay).
+// `attack` scales the positive part of `d`, `sustain` scales the negative part, the sum is
+// clamped symmetrically to +/- `maxGainDb` dB, smoothed with a 2 ms one-pole, and applied
+// as a gain. Because `d` is the ratio of two envelopes of the same signal, the gain curve
+// does not depend on the absolute input level and there is no threshold to set: the same
+// phrase 40 dB quieter produces the same gain curve to within floating-point
+// rounding: `ba.linear2db` does not distribute exactly over a scale factor, so the
+// two curves agree to about 1e-13 dB rather than bit-exactly.
+//
+// With `attack = 0` and `sustain = 0` the output is bit-identical to the input.
+// `transientShaper` is `transientShaper_N_chan` at `N = 1`.
+//
+// #### Usage
+//
+// ```
+// _ : transientShaper(tauFast,tauSlow,maxGainDb,attack,sustain) : _
+// ```
+//
+// Where:
+//
+// * `tauFast`: time constant in seconds of the fast envelope. It must be long enough to
+// average out the rectification ripple of the lowest program frequency; 0.005 is a good
+// starting point (1 ms leaves about +/-1 dB of ripple on a 440 Hz sine)
+// * `tauSlow`: time constant in seconds of the slow envelope, several times `tauFast`;
+// 0.05 is a good starting point. It sets how long an onset or a decay keeps acting
+// * `maxGainDb`: symmetric clamp in dB on the gain, non-negative, applied before
+// smoothing. This is required rather than cosmetic: as material decays towards silence
+// the envelope difference grows without bound, and this clamp is what guarantees
+// `abs(y) <= abs(x) * 10^(maxGainDb/20)`
+// * `attack`: dimensionless gain on the positive (rising-envelope) part of the
+// differential. Positive values emphasise onsets, negative values soften them, 0 is neutral
+// * `sustain`: dimensionless gain on the negative (falling-envelope) part of the
+// differential. Positive values lengthen decays, negative values shorten them, 0 is neutral
+//
+// #### Example
+//
+// ```
+// _ : transientShaper(0.005, 0.05, 12, 6, -3) : _   // punchier onsets, drier tails
+// ```
+//
+// #### Test
+// ```
+// co = library("compressors.lib");
+// os = library("oscillators.lib");
+// transientShaper_test = os.osc(440) : co.transientShaper(0.005, 0.05, 12, 6, -3);
+// ```
+//
+// #### References
+//
+// * <https://faustlibraries.grame.fr/libs/analyzers/#anabs_envelope_tau>
+//------------------------------------------------------------
+declare transientShaper author "David Braun";
+declare transientShaper copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare transientShaper license "MIT";
+
+transientShaper(tauFast,tauSlow,maxGainDb,attack,sustain) =
+    transientShaper_N_chan(tauFast,tauSlow,maxGainDb,attack,sustain,1);
+
+
+//--------------------`(co.)transientShaper_N_chan`-------------------
+// `N`-channel threshold-free transient shaper, see
+// [`(co.)transientShaper`](#cotransientshaper) for the algorithm.
+//
+// The channels are linked: the detector is the sample-wise maximum of `abs` over all `N`
+// channels, and the single resulting gain is applied to every channel, so the relative
+// balance and the stereo (or multichannel) image are preserved.
+//
+// `transientShaper_N_chan` is a standard Faust function.
+//
+// #### Usage
+//
+// ```
+// si.bus(N) : transientShaper_N_chan(tauFast,tauSlow,maxGainDb,attack,sustain,N) : si.bus(N)
+// ```
+//
+// Where:
+//
+// * `tauFast`: time constant in seconds of the fast envelope, 0.005 is a good starting point
+// * `tauSlow`: time constant in seconds of the slow envelope, several times `tauFast`,
+// 0.05 is a good starting point
+// * `maxGainDb`: symmetric clamp in dB on the gain, non-negative, guaranteeing
+// `abs(y) <= abs(x) * 10^(maxGainDb/20)` on every channel
+// * `attack`: dimensionless gain on the positive (rising-envelope) part of the differential
+// * `sustain`: dimensionless gain on the negative (falling-envelope) part of the differential
+// * `N`: number of channels, a compile-time constant numerical expression
+//
+// #### Test
+// ```
+// co = library("compressors.lib");
+// os = library("oscillators.lib");
+// transientShaper_N_chan_test = (os.osc(440), os.osc(660), os.osc(880)) : co.transientShaper_N_chan(0.005, 0.05, 12, 6, -3, 3);
+// ```
+//
+// #### References
+//
+// * <https://faustlibraries.grame.fr/libs/analyzers/#anabs_envelope_tau>
+//------------------------------------------------------------
+declare transientShaper_N_chan author "David Braun";
+declare transientShaper_N_chan copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare transientShaper_N_chan license "MIT";
+
+transientShaper_N_chan(tauFast,tauSlow,maxGainDb,attack,sustain,N) =
+    (si.bus(N) <: ((gain <: si.bus(N)), si.bus(N))) : ro.interleave(N,2) : par(i,N,*)
+with {
+    gain = par(i,N,abs) : rm.parReduce(max,N) : gainDb
+         : si.smooth(ba.tau2pole(0.002)) : ba.db2linear;
+    envDb(tau,m) = an.abs_envelope_tau(tau,m) : max(ma.EPSILON) : ba.linear2db;
+    diffDb(m) = envDb(tauFast,m) - envDb(tauSlow,m);
+    gainDb(m) = (attack*max(0,diffDb(m)) - sustain*min(0,diffDb(m)))
+              : max(0-maxGainDb) : min(maxGainDb);
 };
