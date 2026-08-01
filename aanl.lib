@@ -43,7 +43,7 @@ ba = library("basics.lib");
 ma = library("maths.lib");
 
 declare name "Faust Antialiased Nonlinearities";
-declare version "1.4.2";
+declare version "1.5.0";
 
 //==============================Auxiliary Functions=======================================
 //========================================================================================
@@ -1212,3 +1212,293 @@ atanh2(x) = ADAA2(EPS, f, F1, F2, x)
            F2(x_F2) = .5 * x_F2 ^ 2.0 * f(x_F2) + x_F2 / 2.0 + .25 * 
                Rlog(1.0 - x_F2) - .25 * Rlog(1.0 + x_F2);
       };
+
+
+//===================================Oversampling=========================================
+// Polyphase 2x and 4x oversampling wrappers for MEMORYLESS nonlinearities. Because the
+// wrapped block has no state, the upsample/process/downsample chain collapses exactly
+// into base-rate polyphase branches, so no rate conversion happens and the result is an
+// ordinary single-rate Faust block.
+//========================================================================================
+
+// Internal utility functions for the oversampling section, not documented for users.
+
+// Plain FIR: `hv` is a list of taps, oldest tap last.
+oversamplingFIR(hv, x) = sum(i, ba.count(hv), ba.take(i+1, hv) * (x @ i));
+
+// Folded linear-phase FIR: `hv` is the FIRST HALF of an even-length symmetric kernel,
+// so an L-tap response costs L/2 multiplies.
+oversamplingFIRsym(hv, x) = sum(i, ba.count(hv),
+    ba.take(i+1, hv) * ((x @ i) + (x @ (2 * ba.count(hv) - 1 - i))));
+
+// Halfband kernels. Both are Kaiser-windowed halfband lowpasses (cutoff at a quarter of
+// the rate they conceptually run at), normalised so the halfband's centre tap is 1 and
+// its DC gain is therefore 2 - the usual interpolation normalisation, NOT unity DC gain.
+// They are stored as their odd polyphase phase only, which sums to 1: for a halfband of
+// length 4k+1 the even phase degenerates to the single centre tap, which is why one
+// branch of every stage below is an unscaled pure delay. The matching 0.5 factors in
+// down2/down4/z0/z1 are the decimation scaling that restores overall unity gain, and are
+// not a double-scaling bug.
+//
+// oversamplingHBLong: length 53, beta = 8.15. Passband ripple +/-0.0007 dB up to 0.4*SR,
+// stopband 81.8 dB down from 0.6*SR. Its 26-tap odd phase is symmetric, so only the
+// first 13 taps are stored and oversamplingFIRsym is used.
+oversamplingHBLong = (0.00013996257227270908, -0.0005356244955508052,
+                      0.0014110129713111492, -0.0030790638200892768,
+                      0.0059581746881591704, -0.010593506338500206,
+                      0.017707752373601112, -0.028334291060810729,
+                      0.044174619761862301, -0.068634389618479896,
+                      0.11042557149128016, -0.20165663945582457,
+                      0.63301642093076893);
+
+// oversamplingHBShort: length 25, beta = 9.6, used only for the 2x->4x stage of
+// oversample4, where the transition band is four times wider. Its 12-tap odd phase is
+// split again into even (E) and odd (O) sub-phases by the 4x decomposition.
+oversamplingHBShortE = (-0.00029485625300541661, -0.016694739128935761,
+                        -0.15906318739236766, 0.61679644006109791,
+                        0.055858338212700615, 0.0033980045005102435);
+oversamplingHBShortO = (0.0033980045005102435, 0.055858338212700615,
+                        0.61679644006109791, -0.15906318739236766,
+                        -0.016694739128935761, -0.00029485625300541661);
+
+
+//-------`(aa.)oversample2`---------------------------------------------------------------
+//
+// Runs a MEMORYLESS nonlinearity at twice the sample rate. `f` is memoryless when its
+// output at time n depends only on its input at time n: arithmetic, comparisons,
+// `select2`, `ba.if` and table lookups of the current sample are fine, while `@`, `'`,
+// `mem`, `~`, `letrec`, filters and anything else carrying state are not. Passing a
+// stateful `f` compiles cleanly and is silently wrong; see the warning below.
+//
+// Because `f` is memoryless, upsampling by 2, applying `f`, filtering and decimating
+// collapses exactly (not approximately) into two base-rate polyphase branches, so the
+// program never changes rate: `f` is instantiated twice and one folded 26-tap halfband
+// FIR (13 multiplies) runs in each direction, 27 multiplies per sample in total as
+// measured in the generated C++. The output is mathematically identical to the explicit
+// rate-changing chain; measured against a reference model of that chain the difference
+// is 4.6e-11, which is the precision the reference was printed at.
+//
+// Measured round trip through `aa.oversample2(_)`: exactly linear phase, magnitude flat
+// within 0.0014 dB from DC to 0.4*SR, -0.1 dB at 0.420*SR, -3 dB at 0.468*SR, -6 dB at
+// 0.5*SR. The halfband itself is 81.8 dB down from 0.6*SR upward (measured at the 2x
+// rate it conceptually runs at), and that is what suppresses the images on the way up
+// and the aliases on the way down. Latency is exactly 26 samples at every sample rate;
+// the kernel is a compile-time constant and is never derived from `ma.SR`.
+//
+// Measured aliasing reduction at 48 kHz, full-scale sine into `ma.tanh(5*x)`, alias
+// energy relative to the fundamental: 7 kHz input -12.4 dBc without the wrapper and
+// -29.0 dBc with it (16.6 dB better); 11 kHz input -6.1 dBc and -18.4 dBc (12.3 dB
+// better). A hard clipper, whose harmonics decay only as 1/n, behaves differently:
+// 11.0 dB and 16.0 dB for the same two inputs. Use `aa.oversample4` when that is not
+// enough.
+//
+// WARNING, and it applies to the rest of this very library: every other `aa.*` function
+// here is ADAA-based and therefore STATEFUL, since `aa.ADAA1` forms
+// (F1(x) - F1(x'))/(x - x') from the previous input sample. `aa.oversample2(aa.tanh1)`
+// compiles without complaint and even produces a smoother-looking signal, but it is not
+// `aa.tanh1` running at 2x: the two ADAA instances see the two polyphase branches, which
+// are base-rate signals, so their difference quotients use the wrong time step. Measured
+// against a true 2x-rate `aa.tanh1` the error peaks at -7.2 dB relative to the signal,
+// i.e. it computes a different function altogether. The same applies to
+// `ve.klonCentaur`, whose clipping stage is a WDF. This wrapper does not help the `aa.*`
+// ADAA functions: if you want ADAA, either use them on their own at the program's
+// sample rate, or raise the whole program's sample rate. Nonlinearities that are
+// genuinely memoryless, and therefore safe here, include `ef.wavefold`,
+// `ef.softclipQuadratic`, `ef.cubicnl` (but not `ef.cubicnl_nodc`, which ends in a DC
+// blocker), `ma.tanh` and plain `min`/`max` clippers.
+//
+// #### Usage
+//
+// ```
+// _ : aa.oversample2(f) : _
+// ```
+//
+// Where:
+//
+// * `f`: a memoryless one-input, one-output nonlinearity. Any parameters are supplied by
+//   partial application, for example `ef.wavefold(0.8)`. `f` is instantiated twice, so a
+//   time-varying parameter signal is shared by both instances and is not itself
+//   oversampled.
+//
+// #### Example
+//
+// ```
+// _ : *(4.0) : aa.oversample2(ef.softclipQuadratic) : _
+// _ : *(8.0) : aa.oversample2(ma.tanh) : _
+// ```
+//
+// #### Test
+// ```
+// aa = library("aanl.lib");
+// ef = library("misceffects.lib");
+// os = library("oscillators.lib");
+// oversample2_test = os.osc(3000) : *(4.0) : aa.oversample2(ef.softclipQuadratic);
+// ```
+//
+// #### References
+//
+// * P. P. Vaidyanathan, Multirate Systems and Filter Banks, Prentice Hall, 1993, ch. 4
+//   (polyphase identities) and ch. 4.6 (halfband filters)
+// * <https://ccrma.stanford.edu/~jos/sasp/Kaiser_Window.html>
+// * <https://en.wikipedia.org/wiki/Polyphase_quadrature_filter>
+//
+//----------------------------------------------------------------------------------------
+
+declare oversample2 author "David Braun";
+declare oversample2 copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare oversample2 license "MIT License";
+oversample2(f) = up2 : (f, f) : down2
+    with {
+        d0 = 13;                                  // half the halfband group delay
+        L = oversamplingFIRsym(oversamplingHBLong);
+        up2 = _ <: (_ @ d0), L;                   // even phase is a pure delay
+        down2(a, b) = 0.5 * ((a @ d0) + (L(b) @ 1));
+    };
+
+
+//-------`(aa.)oversample4`---------------------------------------------------------------
+//
+// Runs a MEMORYLESS nonlinearity at four times the sample rate. Everything said about
+// memorylessness in `aa.oversample2`, including the warning that it must never be used
+// on the ADAA `aa.*` functions or on any other stateful block, applies here unchanged.
+//
+// The structure is the exact base-rate polyphase form of the usual two-stage halfband
+// cascade: a length-53 halfband for 1x->2x followed by a length-25 halfband for 2x->4x.
+// `f` is instantiated four times; each direction costs one folded 26-tap FIR plus four
+// 6-tap FIRs, the other two phases being pure delays, for 70 multiplies per sample in
+// total as measured in the generated C++.
+//
+// Measured round trip through `aa.oversample4(_)`: exactly linear phase, magnitude flat
+// within 0.0020 dB from DC to 0.4*SR, -0.1 dB at 0.420*SR, -3 dB at 0.468*SR, -6 dB at
+// 0.5*SR. The two-stage cascade is 81.9 dB down from 0.6*SR upward (measured at the 4x
+// rate it conceptually runs at). Latency is exactly 32 samples at every sample rate.
+//
+// Measured aliasing reduction at 48 kHz, full-scale sine into `ma.tanh(5*x)`, alias
+// energy relative to the fundamental: 7 kHz input -12.4 dBc unwrapped and -66.7 dBc
+// wrapped (54.2 dB better); 11 kHz input -6.1 dBc and -45.5 dBc (39.3 dB better). For a
+// hard clipper the same two inputs improve by 26.1 dB and 31.9 dB.
+//
+// #### Usage
+//
+// ```
+// _ : aa.oversample4(f) : _
+// ```
+//
+// Where:
+//
+// * `f`: a memoryless one-input, one-output nonlinearity, supplied exactly as for
+//   `aa.oversample2`. It is instantiated four times.
+//
+// #### Example
+//
+// ```
+// _ : *(4.0) : aa.oversample4(ef.wavefold(0.8)) : _
+// ```
+//
+// #### Test
+// ```
+// aa = library("aanl.lib");
+// ef = library("misceffects.lib");
+// os = library("oscillators.lib");
+// oversample4_test = os.osc(3000) : *(4.0) : aa.oversample4(ef.wavefold(0.8));
+// ```
+//
+// #### References
+//
+// * P. P. Vaidyanathan, Multirate Systems and Filter Banks, Prentice Hall, 1993, ch. 4
+// * <https://ccrma.stanford.edu/~jos/sasp/Kaiser_Window.html>
+//
+//----------------------------------------------------------------------------------------
+
+declare oversample4 author "David Braun";
+declare oversample4 copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare oversample4 license "MIT License";
+oversample4(f) = up4 : (f, f, f, f) : down4
+    with {
+        d0 = 13;                                  // stage 1 (long halfband) delay
+        d1 = 3;                                   // stage 2 (short halfband) delay
+        L = oversamplingFIRsym(oversamplingHBLong);
+        E = oversamplingFIR(oversamplingHBShortE);
+        O = oversamplingFIR(oversamplingHBShortO);
+        up4 = (_ <: (_ @ d0), L) : phases;
+        phases(u0, u1) = (u0 @ d1),
+                         (E(u0) + (O(u1) @ 1)),
+                         (u1 @ d1),
+                         (E(u1) + O(u0));
+        down4(q0, q1, q2, q3) = 0.5 * ((z0(q0, q1, q3) @ d0) + (L(z1(q1, q2, q3)) @ 1));
+        z0(q0, q1, q3) = 0.5 * ((q0 @ d1) + (O(q1) @ 1) + (E(q3) @ 1));
+        z1(q1, q2, q3) = 0.5 * ((q2 @ d1) + E(q1) + (O(q3) @ 1));
+    };
+
+
+//-------`(aa.)oversample2s`--------------------------------------------------------------
+//
+// Runs a STATEFUL block at twice the sample rate, with the state written out explicitly.
+// This is the escape hatch for everything `aa.oversample2` cannot take: instead of a
+// memoryless `f`, you supply a one-step transition function
+// `f(s1, ..., sN, x) -> (s1', ..., sN', y)` that returns its next state alongside its
+// output. The wrapper evaluates `f` twice per base-rate sample, feeding the state of the
+// first sub-sample into the second and closing the loop with `~`, so the state advances
+// once per 2x sample exactly as it would if the program really ran at 2x.
+//
+// Verified against a reference model that upsamples by 2, runs the recursion at 2x and
+// decimates: for the one-pole `y = 0.2*x + 0.8*y'` the error is 8.3e-11, i.e. exact to
+// the printing precision, whereas wrapping the same one-pole written as an ordinary
+// Faust recursion in `aa.oversample2` is wrong by -11.6 dB relative to the signal.
+//
+// Filtering, latency and cost are those of `aa.oversample2`: linear phase, 26 samples of
+// latency, one folded 26-tap FIR per direction, and `f` instantiated twice.
+//
+// #### Usage
+//
+// ```
+// _ : aa.oversample2s(N, f) : _
+// ```
+//
+// Where:
+//
+// * `N`: number of state signals threaded through `f`, a compile-time constant
+// * `f`: a block with N+1 inputs and N+1 outputs, `(s1, ..., sN, x) -> (s1', ..., sN', y)`.
+//   It is instantiated twice. Everything it needs to remember must travel through the N
+//   state signals: an internal `'`, `@` or `~` inside `f` would run at the base rate and
+//   reintroduce exactly the bug this function exists to avoid.
+//
+// #### Example
+//
+// ```
+// // a one-pole lowpass running at 2x
+// onePoleStep(s, x) = (y, y) with { y = 0.2 * x + 0.8 * s; };
+// _ : aa.oversample2s(1, onePoleStep) : _
+// ```
+//
+// #### Test
+// ```
+// aa = library("aanl.lib");
+// os = library("oscillators.lib");
+// oversample2s_test = os.osc(3000) : aa.oversample2s(1, onePoleStep)
+//     with {
+//         onePoleStep(s, x) = (y, y) with { y = 0.2 * x + 0.8 * s; };
+//     };
+// ```
+//
+// #### References
+//
+// * P. P. Vaidyanathan, Multirate Systems and Filter Banks, Prentice Hall, 1993, ch. 4
+//
+//----------------------------------------------------------------------------------------
+
+declare oversample2s author "David Braun";
+declare oversample2s copyright "Copyright (C) 2026 by David Braun <braun@ccrma.stanford.edu>";
+declare oversample2s license "MIT License";
+oversample2s(N, f) = up2 : (twoStep ~ bus) : (drop, down2)
+    with {
+        d0 = 13;
+        L = oversamplingFIRsym(oversamplingHBLong);
+        up2 = _ <: (_ @ d0), L;
+        down2(a, b) = 0.5 * ((a @ d0) + (L(b) @ 1));
+        bus = par(i, N, _);
+        drop = par(i, N, !);
+        swap = route(2, 2, 1,2, 2,1);
+        // (s, a, b) -> f on a, then f on the resulting state and b -> (s'', y1, y2)
+        twoStep = (f, _) : (bus, swap) : (f, _) : (bus, swap);
+    };

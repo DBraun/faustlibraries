@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------
 
 aa = library("aanl.lib");
+ef = library("misceffects.lib");
 ba = library("basics.lib");
 ma = library("maths.lib");
 os = library("oscillators.lib");
@@ -60,3 +61,10 @@ arcsin2_test = aa.arcsin2(sig);
 tangent_test = aa.tangent(tanDomainSig);
 atanh1_test = aa.atanh1(atanhDomainSig);
 atanh2_test = aa.atanh2(atanhDomainSig);
+
+oversample2_test = os.osc(3000) : *(4.0) : aa.oversample2(ef.softclipQuadratic);
+oversample4_test = os.osc(3000) : *(4.0) : aa.oversample4(ef.wavefold(0.8));
+oversample2s_test = os.osc(3000) : aa.oversample2s(1, onePoleStep)
+    with {
+        onePoleStep(s, x) = (y, y) with { y = 0.2 * x + 0.8 * s; };
+    };
