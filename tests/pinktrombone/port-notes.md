@@ -65,12 +65,16 @@ exists: `voiced` gate); pitch keyboard geometry (use `freq` in Hz; `pt.ui` expos
 - Constriction (`handleTouches` loop): `constrictedDiameter(index, diameter, active, i, rest)`
   with `diameter -= 0.3`, width 10 / 5 / interpolated, raised-cosine `shrink`; exact
   for every section (the JS loop bounds only skip sections where `shrink = 1`).
+- Two simultaneous constrictions are supported (`tract2` / `pinkTrombone2` /
+  `tractDiameters2`, 2026-08-19), applied in touch order like the JS loop, each with
+  its own turbulence tap and 0.1 s intensity ramp; validated against the multi-touch
+  reference to ~2e-6. The single-constriction functions are wrappers with the second
+  constriction inactive (bit-exact with the previous version).
 - Not modelled: the tongue-control "fromPoint" kludge narrowing the reachable index
   range near the inner radius (`tongueIndex` is simply clamped to 12..29 by the UI);
   the fact that a finger on the tongue control *also* acts as a (wide, shallow)
-  constriction while it is held; multiple simultaneous constrictions (one is exposed;
-  more can be composed by hand from `tractDiameters`-like code); touching *below* the
-  tract to open the velum (`nasal` is a separate gate).
+  constriction while it is held; more than two simultaneous constrictions; touching
+  *below* the tract to open the velum (`nasal` is a separate gate).
 
 ## Validation (`validate.py`, float32 DawDreamer vs float64 `ptref.py`)
 

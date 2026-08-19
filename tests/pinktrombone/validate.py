@@ -79,3 +79,11 @@ seg=slice(t0+int(0.3*sr), (N//512)*512)
 print("   after reopen (300ms+): rel err", np.abs(y[seg]-ref[seg]).max()/np.abs(ref[seg]).max())
 i0=np.abs(ref[t0:t0+3000]).argmax(); i1=np.abs(y[t0:t0+3000]).argmax()
 print("   peak sample offset ref", i0, "faust", i1)
+# ---- 6. two simultaneous constrictions (fricative at 36.3 + velar narrowing at 20.6) ----
+rng=np.random.RandomState(7); noise2=rng.uniform(-1,1,N)
+c1=(36.3, 0.5, True); c2=(20.6, 0.8, True)
+ref=ptref.run_tract(sr,g,constrictions=[c1,c2],noise=noise2,noiseMod=0.3)
+inp6=np.stack([noise2,g,np.full(N,0.3)]).astype(np.float32)
+y=render(f'pt = library("pinktrombone.lib"); process = _,_,_ : (\\(nz,gl,nm).(pt.tractN2(nz, 12.9, 2.43, {c1[0]}, {c1[1]}, 1, {c2[0]}, {c2[1]}, 1, 0, gl, nm)));', seconds=N/sr, inputs=inp6)[0][:N]
+seg=slice(sr//4, (N//512)*512)
+print("tract two-constriction: rel max err (after 0.25s)", np.abs(y[seg]-ref[seg]).max()/np.abs(ref[seg]).max())

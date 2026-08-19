@@ -326,10 +326,22 @@ slowReturn(i) = ba.if(i < noseStart, 0.6,
 // ```
 //-------------------------------------------------------------------------------------
 tractDiameters(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive) =
+    tractDiameters2(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, 30, 3, 0);
+
+//------------------------`(pt.)tractDiameters2`----------------------------------------
+// Same with two independent constrictions, applied in order like the original's
+// touch loop (each can only narrow what the previous ones left).
+//
+// ```
+// tractDiameters2(tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a) : si.bus(44)
+// ```
+//-------------------------------------------------------------------------------------
+tractDiameters2(tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a) =
     par(i, n, moveTowards(slowReturn(i)*movementSpeed, 2*movementSpeed, target(i)))
 with {
-    target(i) = constrictedDiameter(cIndex, cDiameter, cActive, i,
-                                    restDiameter(tongueIndex, tongueDiameter, i));
+    target(i) = constrictedDiameter(c2i, c2d, c2a, i,
+                constrictedDiameter(c1i, c1d, c1a, i,
+                                    restDiameter(tongueIndex, tongueDiameter, i)));
 };
 
 // Fixed nose diameters (Tract.init); section 0 is the velum, replaced dynamically.
@@ -483,13 +495,29 @@ with {
 tract(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal, glottalOutput, noiseModulator) =
     tractN(fricativeNoise, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal, glottalOutput, noiseModulator);
 
+//------------------------`(pt.)tract2`-------------------------------------------------
+// `tract` with two independent constrictions (the original is multi-touch: each
+// touch narrows the tract and injects its own turbulence). Useful for consonant
+// clusters and double articulations.
+//
+// ```
+// tract2(tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a, nasal, glottalOutput, noiseModulator) : _
+// ```
+//-------------------------------------------------------------------------------------
+tract2(tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a, nasal, glottalOutput, noiseModulator) =
+    tractN2(fricativeNoise, tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a, nasal, glottalOutput, noiseModulator);
+
 //------------------------`(pt.)tractN`-------------------------------------------------
-// Same as `tract` but with an explicit turbulence noise source (the original's
-// 1 kHz, Q 0.5 bandpassed white noise) as first argument, for testing.
+// Same as `tract` / `tract2` but with an explicit turbulence noise source (the
+// original's 1 kHz, Q 0.5 bandpassed white noise) as first argument, for testing.
 //-------------------------------------------------------------------------------------
 tractN(fricNoise, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal, glottalOutput, noiseModulator) =
+    tractN2(fricNoise, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, 30, 3, 0, nasal, glottalOutput, noiseModulator);
+
+tractN2(fricNoise, tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a, nasal, glottalOutput, noiseModulator) =
     excBus : (body ~ si.bus(NSTATE)) : (par(k, NSTATE, !), _) : *(0.125)
 with {
+    NTRB = 2 + 3*2;         // transEnv, transPos, then (turb, idx, delta) per constriction
     NEXC = 1 + n + NREFL;   // glottal, inj[0..43], reflections
 
     // ---- geometry (each signal generator instantiated ONCE; multiply-used buses
@@ -500,18 +528,18 @@ with {
     //      generating the SVG) ----
     velumTarget = select2(nasal > 0, 0.01, 0.4);
     velum = moveTowards(0.25*movementSpeed, 0.1*movementSpeed, velumTarget);
-    diameters = tractDiameters(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive);
+    diameters = tractDiameters2(tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a);
 
-    // ---- turbulence noise level at the constriction ----
-    turb = 0.66*fricNoise*fricIntensity*noiseModulator*thinness*openness
-         * (cDiameter > 0) * (cIndex >= 2) * (cIndex <= n)
+    // ---- turbulence noise level at each constriction ----
+    turbOf(ci, cd, ca) = 0.66*fricNoise*fricIntensity*noiseModulator*thinness*openness
+                       * (cd > 0) * (ci >= 2) * (ci <= n)
     with {
-        fricIntensity = moveTowards(10, 10, cActive > 0) : aa.clip(0, 1);  // 0.1 s attack/release
-        thinness = 8*(0.7 - cDiameter) : aa.clip(0, 1);
-        openness = 30*(cDiameter - 0.3) : aa.clip(0, 1);
+        fricIntensity = moveTowards(10, 10, ca > 0) : aa.clip(0, 1);  // 0.1 s attack/release
+        thinness = 8*(0.7 - cd) : aa.clip(0, 1);
+        openness = 30*(cd - 0.3) : aa.clip(0, 1);
     };
-    idx = floor(cIndex);
-    delta = cIndex - idx;
+    turbBus = turbOf(c1i, c1d, c1a), floor(c1i), c1i - floor(c1i),
+              turbOf(c2i, c2d, c2a), floor(c2i), c2i - floor(c2i);
 
     // ---- transients: (lastObstruction, velum) -> (transEnv, transPos) ----
     // The original detects the release in `reshapeTract`, one block after the
@@ -526,17 +554,20 @@ with {
         transPos = latch(releaseTrig, lo' @ blockSamples);
     };
 
-    // one injection tap: (transEnv, transPos, turb, idx, delta) -> inj[k]
-    injTap(k) = \(e, p, t, ix, dl).(0.5*e*(k == p) + 0.5*t*((k == ix+1)*(1 - dl) + (k == ix+2)*dl));
+    // one injection tap: (transEnv, transPos, (turb, idx, delta)x2) -> inj[k]
+    injTap(k) = \(e, p, t1, ix1, dl1, t2, ix2, dl2).(
+        0.5*e*(k == p)
+      + 0.5*t1*((k == ix1+1)*(1 - dl1) + (k == ix1+2)*dl1)
+      + 0.5*t2*((k == ix2+1)*(1 - dl2) + (k == ix2+2)*dl2));
 
     // ---- the excitation bus: glottal, inj[0..43], reflections (built once) ----
     excBus = glottalOutput,
              (((diameters, velum) <: (tractReflections, lastObsAndVelum))  // refl(NREFL), lastObs, velum
-              : (si.bus(NREFL), transientPair), turb, idx, delta           // refl(NREFL), e, p, t, ix, dl
-              : route(NREFL+5, NREFL+5,
-                      par(i, NREFL, (i+1, i+6)),
-                      par(i, 5, (NREFL+1+i, i+1)))                         // e, p, t, ix, dl, refl(NREFL)
-              : (si.bus(5) <: par(k, n, injTap(k))), si.bus(NREFL));       // inj(n), refl(NREFL)
+              : (si.bus(NREFL), transientPair), turbBus                    // refl(NREFL), e, p, turbBus(6)
+              : route(NREFL+NTRB, NREFL+NTRB,
+                      par(i, NREFL, (i+1, i+NTRB+1)),
+                      par(i, NTRB, (NREFL+1+i, i+1)))                      // e, p, turbBus(6), refl(NREFL)
+              : (si.bus(NTRB) <: par(k, n, injTap(k))), si.bus(NREFL));    // inj(n), refl(NREFL)
 
     // ---- two waveguide ticks per sample, summing lip+nose output of each ----
     tapOut = si.bus(NSTATE) <: si.bus(NSTATE), (route(NSTATE, 2, (n, 1), (2*n + noseLength, 2)) : +);  // lipOutput + noseOutput
@@ -564,14 +595,26 @@ with {
 // ```
 //-------------------------------------------------------------------------------------
 pinkTrombone(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal) =
+    pinkTrombone2(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, 30, 3, 0, nasal);
+
+//------------------------`(pt.)pinkTrombone2`------------------------------------------
+// Glottis + tract with two constrictions. Mono output.
+//
+// ```
+// pinkTrombone2(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter,
+//               c1i, c1d, c1a, c2i, c2d, c2a, nasal) : _
+// ```
+//-------------------------------------------------------------------------------------
+pinkTrombone2(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a, nasal) =
     glottis(freq, tenseness, voiced, wobble) : (_,_,!,!)
-    : tract(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal);
+    : tract2(tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a, nasal);
 
 //------------------------`(pt.)ui`-----------------------------------------------------
 // Demo interface mirroring the original controls.
 //-------------------------------------------------------------------------------------
 ui = hgroup("[0] Pink Trombone",
-    pinkTrombone(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal)
+    pinkTrombone2(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter,
+                  cIndex, cDiameter, cActive, c2Index, c2Diameter, c2Active, nasal)
 )
 with {
     vb(x) = vgroup("[0] voicebox", x);
@@ -589,4 +632,8 @@ with {
     cIndex = cs(hslider("[0] index [style:knob]", 30, 2, n, 0.01));
     cDiameter = cs(hslider("[1] diameter [style:knob]", 1.0, 0, 3, 0.01));
     cActive = cs(checkbox("[2] active"));
+    cs2(x) = vgroup("[3] constriction 2", x);
+    c2Index = cs2(hslider("[0] index [style:knob]", 20, 2, n, 0.01));
+    c2Diameter = cs2(hslider("[1] diameter [style:knob]", 1.0, 0, 3, 0.01));
+    c2Active = cs2(checkbox("[2] active"));
 };

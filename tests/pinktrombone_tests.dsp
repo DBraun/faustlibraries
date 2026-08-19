@@ -29,7 +29,9 @@ pulses = (os.lf_imptrain(140)), 0.3;
 tract_vowel_test = pulses : pt.tract(12.9, 2.43, 30, 3, 0, 0);
 tract_nasal_test = pulses : pt.tract(27, 2.2, 30, 3, 0, 1);
 tract_closure_test = pulses : pt.tract(12.9, 2.43, 40, 0, 1, 0);
+tract2_test = pulses : pt.tract2(12.9, 2.43, 36.3, 0.5, 1, 20.6, 0.8, 1, 0);
 
 // Full instrument (uses internal noise generators: deterministic no.noises streams)
 pinkTrombone_test = pt.pinkTrombone(140, 0.6, 1, 0, 12.9, 2.43, 30, 3, 0, 0);
+pinkTrombone2_test = pt.pinkTrombone2(140, 0.6, 1, 0, 12.9, 2.43, 40, 0.2, 1, 20, 1.0, 1, 1);
 ui_test = pt.ui;

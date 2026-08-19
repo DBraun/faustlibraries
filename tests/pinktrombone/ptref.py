@@ -47,26 +47,31 @@ class Tract:
             if i==self.bladeStart or i==self.lipStart-2: curve*=0.94
             self.restDiameter[i]=1.5-curve
     def setConstriction(self, index, diameter, active):
-        """TractUI.handleTouches constriction part."""
+        """TractUI.handleTouches constriction part (single constriction)."""
+        self.setConstrictions([(index, diameter, active)])
+    def setConstrictions(self, touches):
+        """TractUI.handleTouches constriction part: list of (index, diameter, active),
+        applied in touch order like the JS loop."""
         self.setRestDiameter()
         self.targetDiameter[:]=self.restDiameter
-        if not active: return
-        if diameter < -0.85-0.8: return
-        diameter-=0.3
-        if diameter<0: diameter=0
-        if index<25: width=10
-        elif index>=self.tipStart: width=5
-        else: width=10-5*(index-25)/(self.tipStart-25)
-        if index>=2 and index<self.n and diameter<3:
-            intIndex=round(index)  # JS Math.round rounds .5 up; python banker's - avoid .5
-            for i in range(-math.ceil(width)-1, math.ceil(width+1)):
-                if intIndex+i<0 or intIndex+i>=self.n: continue
-                relpos=abs((intIndex+i)-index)-0.5
-                if relpos<=0: shrink=0
-                elif relpos>width: shrink=1
-                else: shrink=0.5*(1-math.cos(math.pi*relpos/width))
-                if diameter<self.targetDiameter[intIndex+i]:
-                    self.targetDiameter[intIndex+i]=diameter+(self.targetDiameter[intIndex+i]-diameter)*shrink
+        for (index, diameter, active) in touches:
+            if not active: continue
+            if diameter < -0.85-0.8: continue
+            diameter-=0.3
+            if diameter<0: diameter=0
+            if index<25: width=10
+            elif index>=self.tipStart: width=5
+            else: width=10-5*(index-25)/(self.tipStart-25)
+            if index>=2 and index<self.n and diameter<3:
+                intIndex=round(index)  # JS Math.round rounds .5 up; python banker's - avoid .5
+                for i in range(-math.ceil(width)-1, math.ceil(width+1)):
+                    if intIndex+i<0 or intIndex+i>=self.n: continue
+                    relpos=abs((intIndex+i)-index)-0.5
+                    if relpos<=0: shrink=0
+                    elif relpos>width: shrink=1
+                    else: shrink=0.5*(1-math.cos(math.pi*relpos/width))
+                    if diameter<self.targetDiameter[intIndex+i]:
+                        self.targetDiameter[intIndex+i]=diameter+(self.targetDiameter[intIndex+i]-diameter)*shrink
     def reshapeTract(self, dt):
         amount=dt*self.movementSpeed; newLast=-1
         for i in range(self.n):
@@ -100,7 +105,9 @@ class Tract:
     def runStep(self, glottalOutput, turbulenceNoise, lam, turb=None):
         n=self.n; R=self.R; L=self.L; jR=self.junctionOutputR; jL=self.junctionOutputL
         self.processTransients()
-        if turb is not None: self.addTurbulenceNoiseAtIndex(*turb)
+        if turb is not None:
+            for t in (turb if isinstance(turb, list) else [turb]):
+                self.addTurbulenceNoiseAtIndex(*t)
         jR[0]=L[0]*self.glottalReflection+glottalOutput
         jL[n]=R[n-1]*self.lipReflection
         for i in range(1,n):
@@ -154,29 +161,32 @@ def lf_wave(t,p):
     if t>p['Te']: return (-math.exp(-p['eps']*(t-p['Te']))+p['shift'])/p['Delta']
     return p['E0']*math.exp(p['alpha']*t)*math.sin(p['omega']*t)
 
-def run_tract(sr, glottal, blockLength=512, tongueIndex=12.9, tongueDiameter=2.43, constriction=None, noise=None, noiseMod=0.3):
-    """glottal: array. constriction: (index, diameter, activeArrayPerBlock or bool). Returns output array."""
+def run_tract(sr, glottal, blockLength=512, tongueIndex=12.9, tongueDiameter=2.43, constriction=None,
+              constrictions=None, noise=None, noiseMod=0.3):
+    """glottal: array. constriction: (index, diameter, activeArrayPerBlock or bool), or
+    constrictions: list of those (multi-touch). Returns output array."""
     T=Tract(sr,blockLength,tongueIndex,tongueDiameter)
     N=len(glottal); out=np.zeros(N)
     nblocks=int(math.ceil(N/blockLength))
+    clist = constrictions if constrictions is not None else ([constriction] if constriction is not None else [])
     for b in range(nblocks):
-        act = False; cidx=cdia=None
-        if constriction is not None:
-            cidx,cdia,acts=constriction
+        touches=[]
+        for (cidx,cdia,acts) in clist:
             act = acts[b] if hasattr(acts,'__len__') else acts
-        T.setConstriction(cidx if cidx is not None else 0, cdia if cdia is not None else 3, act)
+            touches.append((cidx,cdia,act))
+        T.setConstrictions(touches)
         # noise intensity fade in/out (fricative_intensity) handled by caller via noise array
         for j in range(blockLength):
             k=b*blockLength+j
             if k>=N: break
             l1=j/blockLength; l2=(j+0.5)/blockLength
             g=glottal[k]
-            turb=None
-            if noise is not None and act and cdia>0 and 2<=cidx<=T.n:
-                turb=(0.66*noise[k], cidx, cdia, noiseMod)
+            turbs=[(0.66*noise[k], cidx, cdia, noiseMod)
+                   for (cidx,cdia,act) in touches
+                   if noise is not None and act and cdia>0 and 2<=cidx<=T.n]
             v=0
-            T.runStep(g,0,l1,turb); v+=T.lipOutput+T.noseOutput
-            T.runStep(g,0,l2,turb); v+=T.lipOutput+T.noseOutput
+            T.runStep(g,0,l1,turbs); v+=T.lipOutput+T.noseOutput
+            T.runStep(g,0,l2,turbs); v+=T.lipOutput+T.noseOutput
             out[k]=v*0.125
         T.finishBlock()
     return out

@@ -2,6 +2,11 @@
 
 Support material for `pinktrombone.lib` (root, prefix `pt`), the Faust port of Neil
 Thapen's **Pink Trombone** v1.1 (2017, MIT) <https://dood.al/pinktrombone/>.
+Main entry points: `pt.pinkTrombone(...)` / `pt.pinkTrombone2(...)` (the `2` variants
+take two independent constrictions, like the original's multi-touch), `pt.glottis`,
+`pt.tract` / `pt.tract2` (+ `tractN`/`tractN2` with explicit turbulence noise),
+`pt.lfWaveform`, `pt.tractDiameters(2)`, `pt.tractReflections`, `pt.tractTick`,
+`pt.ui` (demo GUI, = `dm.pink_trombone_demo`).
 
 ## Files
 
