@@ -714,6 +714,15 @@ def parse_usage_io(usage: str | None) -> dict[str, int | str | None]:
     def count_signals(expr: str) -> int | None:
         if not expr:
             return None
+        # Numeric bus widths are used by low-level multi-channel APIs. Only
+        # count a list when every term is a known wire/bus, so commas inside
+        # arbitrary function arguments are not mistaken for bus boundaries.
+        terms = [term.strip() for term in expr.split(",")]
+        if all(re.fullmatch(r"_|!|(?:si\.)?bus\(\s*\d+\s*\)", term)
+               for term in terms):
+            return sum(1 if term == "_" else 0 if term == "!"
+                       else int(re.search(r"\d+", term).group())
+                       for term in terms)
         if expr == "_":
             return 1
         if expr == "!":

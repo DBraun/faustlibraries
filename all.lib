@@ -66,6 +66,9 @@ import("noises.lib");
 import("oscillators.lib");
 import("phaflangers.lib");
 import("physmodels.lib");
+// Pink Trombone keeps deprecated generic helpers (including latch).
+// Access its API through pt to avoid collisions in this flat compatibility namespace.
+pt = library("pinktrombone.lib");
 import("quantizers.lib");
 import("reducemaps.lib");
 import("reverbs.lib");

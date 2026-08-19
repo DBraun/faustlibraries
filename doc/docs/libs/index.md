@@ -323,6 +323,7 @@
 [(dm.)orientation6_demo](demos.md#dmorientation6_demo)
 [(dm.)motion_wrapper_demo](demos.md#dmmotion_wrapper_demo)
 [(dm.)ja_transformer_demo](demos.md#dmja_transformer_demo)
+[(dm.)pink_trombone_demo](demos.md#dmpink_trombone_demo)
 
 ## dx7/dx7
 
@@ -748,6 +749,9 @@
 [(no.)velvet_noise](noises.md#novelvet_noise)
 [(no.)gnoise, (no.)gnoisem](noises.md#nognoise,-nognoisem)
 [(no.)colored_noise](noises.md#nocolored_noise)
+[(no.)simplex2](noises.md#nosimplex2)
+[(no.)simplex1](noises.md#nosimplex1)
+[(no.)simplex1_lf](noises.md#nosimplex1_lf)
 
 ## oscillators
 
@@ -994,6 +998,56 @@
 [(pm.)allpassNL](physmodels.md#pmallpassnl)
 [(pm.)modalModel](physmodels.md#pmmodalmodel)
 [(pm.)rk_solve, (pm.)rk_solve_1, (pm.)rk_solve_2, (pm.)rk_solve_3, (pm.)rk_solve_4](physmodels.md#pmrk_solve,-pmrk_solve_1,-pmrk_solve_2,-pmrk_solve_3,-pmrk_solve_4)
+
+## pinktrombone
+
+[(pt.)n](pinktrombone.md#ptn)
+[(pt.)noiseSeed](pinktrombone.md#ptnoiseseed)
+[(pt.)simplexNoise](pinktrombone.md#ptsimplexnoise)
+[(pt.)lfWaveform](pinktrombone.md#ptlfwaveform)
+[(pt.)glottis](pinktrombone.md#ptglottis)
+[(pt.)tractDiameters](pinktrombone.md#pttractdiameters)
+[(pt.)tractDiameters2](pinktrombone.md#pttractdiameters2)
+[(pt.)NSTATE](pinktrombone.md#ptnstate)
+[(pt.)NREFL](pinktrombone.md#ptnrefl)
+[(pt.)tractTick](pinktrombone.md#pttracttick)
+[(pt.)tractReflections](pinktrombone.md#pttractreflections)
+[(pt.)tract](pinktrombone.md#pttract)
+[(pt.)tract2](pinktrombone.md#pttract2)
+[(pt.)tractN](pinktrombone.md#pttractn)
+[(pt.)tractN2](pinktrombone.md#pttractn2)
+[(pt.)pinkTrombone](pinktrombone.md#ptpinktrombone)
+[(pt.)pinkTrombone2](pinktrombone.md#ptpinktrombone2)
+[(pt.)aspirationNoise](pinktrombone.md#ptaspirationnoise)
+[(pt.)bandpassUnity](pinktrombone.md#ptbandpassunity)
+[(pt.)bladeStart](pinktrombone.md#ptbladestart)
+[(pt.)blockTime](pinktrombone.md#ptblocktime)
+[(pt.)cif](pinktrombone.md#ptcif)
+[(pt.)constrictedDiameter](pinktrombone.md#ptconstricteddiameter)
+[(pt.)fricativeNoise](pinktrombone.md#ptfricativenoise)
+[(pt.)glottalReflection](pinktrombone.md#ptglottalreflection)
+[(pt.)latch](pinktrombone.md#ptlatch)
+[(pt.)lipReflection](pinktrombone.md#ptlipreflection)
+[(pt.)lipStart](pinktrombone.md#ptlipstart)
+[(pt.)moveTowards](pinktrombone.md#ptmovetowards)
+[(pt.)movementSpeed](pinktrombone.md#ptmovementspeed)
+[(pt.)noseArea](pinktrombone.md#ptnosearea)
+[(pt.)noseDamping](pinktrombone.md#ptnosedamping)
+[(pt.)noseDiameterInit](pinktrombone.md#ptnosediameterinit)
+[(pt.)noseLength](pinktrombone.md#ptnoselength)
+[(pt.)noseReflection](pinktrombone.md#ptnosereflection)
+[(pt.)noseReflectionA0](pinktrombone.md#ptnosereflectiona0)
+[(pt.)noseStart](pinktrombone.md#ptnosestart)
+[(pt.)restDiameter](pinktrombone.md#ptrestdiameter)
+[(pt.)slowReturn](pinktrombone.md#ptslowreturn)
+[(pt.)tipStart](pinktrombone.md#pttipstart)
+[(pt.)tongueDiameterMax](pinktrombone.md#pttonguediametermax)
+[(pt.)tongueDiameterMin](pinktrombone.md#pttonguediametermin)
+[(pt.)tongueIndexMax](pinktrombone.md#pttongueindexmax)
+[(pt.)tongueIndexMin](pinktrombone.md#pttongueindexmin)
+[(pt.)tractDamping](pinktrombone.md#pttractdamping)
+[(pt.)whiteNoise](pinktrombone.md#ptwhitenoise)
+[(pt.)ui](pinktrombone.md#ptui)
 
 ## quantizers
 
