@@ -1,0 +1,592 @@
+//################################ pinktrombone.lib ##########################################
+// A Faust port of Neil Thapen's **Pink Trombone** (2017), the bare-handed procedural
+// speech synthesiser <https://dood.al/pinktrombone/>.
+//
+// The original is a ~1000-line JavaScript program running in a ScriptProcessorNode.
+// This library reproduces its DSP core:
+//
+// * **Glottis** — a per-period-resampled Liljencrants–Fant (LF) glottal-flow
+//   waveform driven by a single "tenseness" parameter (Rd = 3(1-tenseness)),
+//   plus aspiration noise modulated by the glottal cycle, vibrato / pitch wobble
+//   and slow tenseness drift.
+// * **Tract** — a 44-section Kelly–Lochbaum digital waveguide of the vocal
+//   tract, run at *twice* the audio rate (two waveguide ticks per sample),
+//   with a 28-section nasal branch coupled at section 17 by a three-port
+//   scattering junction, glottal reflection 0.75, lip/nostril reflection -0.85,
+//   fricative turbulence injected at a movable constriction, and a decaying
+//   "transient" pulse released when a full closure opens (plosives).
+// * **Tract shape** — the "tongue" (index / diameter) that bends the rest
+//   diameters between the blade and the lips, an extra constriction
+//   (index / diameter, e.g. for fricatives and stops), and the velum.
+//
+// Everything that was block-rate (512 samples) in the JavaScript is computed
+// at sample rate here, with the block-rate constants converted to per-second
+// rates using `512/ma.SR`, so behaviour matches the original at any sample rate.
+// The 1-D simplex drift noises are the real thing (`no.simplex1_lf`, a port of
+// the same noisejs code, with a fixed seed instead of `Date.now()`); the browser's
+// uniform `Math.random()` white noise is replaced by `no.noises`.
+//
+// Its official prefix is `pt`. See `tests/pinktrombone/` (port-notes.md, the Python
+// reference implementation and validation script) for the port notes and the list of
+// deliberate deviations (UI-only behaviours that were not modelled).
+//
+// #### Usage
+//
+// ```
+// process = pt.pinkTrombone(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter,
+//                           constrictionIndex, constrictionDiameter, constrictionOn, nasal);
+// ```
+//
+// or simply `process = pt.ui;` (or `dm.pink_trombone_demo`) for the ready-made demo interface.
+//
+// Note: pass *signals* (or use partial application / sequential composition) for the
+// audio-rate arguments `glottalOutput`, `noiseModulator`, `fricNoise` — an explicit
+// `_` argument gets duplicated wherever the parameter is used inside the function.
+//
+// #### References
+//
+// * Neil Thapen, *Pink Trombone — bare-handed procedural speech synthesis*,
+//   version 1.1 (March 2017), MIT licence. <https://dood.al/pinktrombone/>
+// * The original's bibliography: J. O. Smith III, *Physical Audio Signal Processing*
+//   <https://ccrma.stanford.edu/~jos/pasp/>; B. H. Story, "A parametric model of the
+//   vocal tract area function for vowel and consonant simulation", JASA 117(5), 2005;
+//   H.-L. Lu & J. O. Smith, "Glottal source modeling for singing voice synthesis",
+//   ICMC 2000; J. Mullen, *Physical modelling of the vocal tract with the 2D digital
+//   waveguide mesh*, PhD thesis, York, 2006.
+// * G. Fant, "The LF-model revisited. Transformations and frequency domain analysis",
+//   STL-QPSR 36(2-3), 1995 (the Rd parametrisation used by `setupWaveform`).
+//
+// #### License
+//
+// The Faust port is MIT-licensed, Copyright 2026 David Braun. It is a derivative
+// work of *Pink Trombone* version 1.1 (March 2017) by Neil Thapen
+// <https://venuspatrol.nfshost.com>; the original copyright and permission notice
+// follows, reproduced verbatim as it requires:
+//
+// Copyright 2017 Neil Thapen
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the "Software"),
+// to deal in the Software without restriction, including without limitation
+// the rights to use, copy, modify, merge, publish, distribute, sublicense,
+// and/or sell copies of the Software, and to permit persons to whom the
+// Software is furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+// IN THE SOFTWARE.
+//########################################################################################
+
+declare name "pinktrombone.lib";
+declare version "0.1.0";
+declare author "David Braun (Faust port), Neil Thapen (original algorithm)";
+declare license "MIT";
+
+import("stdfaust.lib");
+
+//=========================== Constants ================================================
+//======================================================================================
+
+n = 44;                 // number of tract sections
+bladeStart = 10;
+tipStart = 32;
+lipStart = 39;
+noseLength = 28;
+noseStart = n - noseLength + 1;   // 17
+glottalReflection = 0.75;
+lipReflection = -0.85;
+movementSpeed = 15;     // "cm per second"
+tractDamping = 0.999;   // per-tick loss in the mouth
+noseDamping = 1.0;      // `fade` in the original (nose has no loss)
+noseReflectionA0 = 0.4*0.4; // noseA[0] used when nose reflections were computed at init
+
+// The original's block-rate updates (512-sample ScriptProcessor blocks).
+blockTime = 512.0/ma.SR;
+
+// Tongue index bounds used by the UI (bladeStart+2 .. tipStart-3).
+tongueIndexMin = bladeStart+2;
+tongueIndexMax = tipStart-3;
+tongueDiameterMin = 2.05;
+tongueDiameterMax = 3.5;
+
+//=========================== Utilities =================================================
+//======================================================================================
+
+// Asymmetric slew limiter (rates in units/second). y(0) = x(0): the state is
+// the deviation from the target so the smoother starts *on* its target
+// instead of at 0 (avoids a spurious "opening" of the tract at start-up).
+moveTowards(up, dn, x) = x - e
+with {
+    dx = (x - x') * (ba.time > 0);
+    e = (\(ep).(ep + dx - aa.clip(0 - dn/ma.SR, up/ma.SR, ep + dx))) ~ _;
+};
+
+// Latch `x` when `w` is nonzero (also on the very first sample so the latch
+// never sits at an unrelated 0).
+latch(w, x) = x : ba.sAndH(w | (ba.time == 0));
+
+// The original's 1-D simplex noise `noise.simplex1(t*rate)`: one seeded permutation
+// table shared by all the drift streams (as in the JavaScript, where a single
+// `noise` object is evaluated at different rates). Real simplex noise lives in
+// `no.simplex1_lf` (noises.lib); `noiseSeed` selects the table (the original
+// seeds it from `Date.now()`, i.e. randomly per page load).
+noiseSeed = 12345;
+simplexNoise(rate) = no.simplex1_lf(noiseSeed, rate);
+
+// The browser fed one uniform [0,1) white noise into two bandpass filters
+// (BiquadFilterNode "bandpass", unity peak). Faust `no.noise` is [-1,1], so
+// halve it; the DC offset is removed by the bandpass anyway.
+whiteNoise = 0.5*no.noise;
+bandpassUnity(fc, Q) = fi.resonbp(fc, Q, 1/Q);
+aspirationNoise = whiteNoise : bandpassUnity(500, 0.5);
+fricativeNoise = whiteNoise : bandpassUnity(1000, 0.5);
+
+//=========================== Glottis ===================================================
+//======================================================================================
+
+//------------------------`(pt.)lfWaveform`---------------------------------------------
+// The original's `setupWaveform` + `normalizedLFWaveform`: a Liljencrants–Fant
+// glottal flow derivative pulse parametrised by Rd (0.5..2.7), normalised to a
+// period of 1 and Ee = 1, evaluated at phase `t` in [0,1).
+//
+// ```
+// lfWaveform(Rd, t) : _
+// ```
+//-------------------------------------------------------------------------------------
+lfWaveform(Rd0, t) = (Rd0, t) : stageR : stageT : stageS : stageA : evalLF
+with {
+    // staged so each coefficient is computed once and passed on as a wire
+    // (keeps the block diagram small; see the note in `glottis`)
+    stageR = \(rd0, tt).(aa.clip(0.5, 2.7, rd0), tt)
+           : \(Rd, tt).(-0.01 + 0.048*Rd, 0.224 + 0.118*Rd, Rd, tt)                     // Ra, Rk, Rd, t
+           : \(Ra, Rk, Rd, tt).(Ra, Rk, (Rk/4)*(0.5 + 1.2*Rk)/(0.11*Rd - Ra*(0.5 + 1.2*Rk)), tt); // Ra, Rk, Rg, t
+    stageT = \(Ra, Rk, Rg, tt).(Ra, 1/(2*Rg), Rk, tt)                                   // Ta, Tp, Rk, t
+           : \(Ta, Tp, Rk, tt).(Ta, Tp, Tp + Tp*Rk, tt);                                // Ta, Tp, Te, t
+    stageS = \(Ta, Tp, Te, tt).(1/Ta, Tp, Te, tt)                                       // epsilon, ...
+           : \(epsilon, Tp, Te, tt).(epsilon, exp(0 - epsilon*(1 - Te)), Tp, Te, tt)    // epsilon, shift, ...
+           : \(epsilon, shift, Tp, Te, tt).(epsilon, shift, 1 - shift, Tp, Te, tt);     // epsilon, shift, Delta, Tp, Te, t
+    stageA = \(epsilon, shift, Delta, Tp, Te, tt).
+                 (epsilon, shift, Delta, Tp, Te, ma.PI/Tp,
+                  ((1/epsilon)*(shift - 1) + (1 - Te)*shift)/Delta, tt)                  // ..., omega, RHSIntegral, t
+           : \(epsilon, shift, Delta, Tp, Te, omega, RHSIntegral, tt).
+                 (epsilon, shift, Delta, Te, omega, sin(omega*Te), Tp,
+                  0 - (RHSIntegral - (Te - Tp)/2), tt)                                   // ..., s, Tp, totalUpperIntegral, t
+           : \(epsilon, shift, Delta, Te, omega, s, Tp, totalUpperIntegral, tt).
+                 (epsilon, shift, Delta, Te, omega, s,
+                  log(0 - ma.PI*s*totalUpperIntegral/(Tp*2))/(Tp/2 - Te), tt)            // ..., alpha, t
+           : \(epsilon, shift, Delta, Te, omega, s, alpha, tt).
+                 (epsilon, shift, Delta, Te, omega, alpha, -1.0/(s*exp(alpha*Te)), tt);  // ..., E0, t
+    evalLF = \(epsilon, shift, Delta, Te, omega, alpha, E0, tt).
+                 (select2(tt > Te,
+                          E0*exp(alpha*tt)*sin(omega*tt),
+                          (shift - exp(0 - epsilon*(tt - Te)))/Delta));
+};
+
+//------------------------`(pt.)glottis`-----------------------------------------------
+// The Pink Trombone glottal source. Returns the glottal flow (LF pulse plus
+// aspiration noise) that feeds the tract, together with the signals the tract
+// needs from the glottis (noise modulator, and glottal-phase & intensity for
+// convenience).
+//
+// #### Usage
+//
+// ```
+// glottis(freq, tenseness, voiced, wobble) : _, _, _, _
+// ```
+//
+// Where:
+//
+// * `freq`: target fundamental frequency in Hz (the original keyboard spans
+//   87.31 Hz (F2) + 20 semitones; default 140 Hz)
+// * `tenseness`: 0..1, the "voicebox" vertical control (0.6 default). Rd = 3(1-tenseness).
+// * `voiced`: gate (>0 = voice on). Behaves like the original's "always voice"
+//   button: intensity ramps up in ~90 ms and down in ~230 ms.
+// * `wobble`: 1 = "pitch wobble" on (large slow random pitch drift), 0 = off.
+//
+// Outputs: `(glottalOutput, noiseModulator, intensity, phase)`.
+//-------------------------------------------------------------------------------------
+glottis(freq, tenseness, voiced, wobble) = stage1 : stage2 : stage3 : stage4
+with {
+    // The stages pass shared signals along as *wires* (sequential composition)
+    // instead of referencing `with`-definitions from several places: Faust
+    // substitutes definitions textually, so a twice-referenced definition
+    // becomes two full subgraphs in the block diagram (the signal compiler
+    // CSEs them, the SVG drawer does not).
+
+    // ---- stage1: intensity (block-rate state of the original, at sample rate)
+    // intensity += 0.13 per block when voiced, -= 0.05 per block otherwise, clamped 0..1
+    stage1 = moveTowards(0.13/blockTime, 0.05/blockTime, (voiced > 0)) : aa.clip(0, 1);
+
+    // ---- stage2: (intensity) -> (intensity, newFrequency, newTenseness) ----
+    stage2 = \(int1).(int1, newFrequency(int1), newTenseness(int1));
+
+    // smoothFrequency moves by a factor 1.1 per block towards the UI frequency,
+    // and snaps to it when intensity == 0.
+    newFrequency(intensity) = smoothFrequency*(1 + vibrato)
+    with {
+        logRate = log(1.1)/blockTime;
+        smoothFrequency = exp(sf)
+        with {
+            lf = log(max(1, freq));
+            sf = (\(s).(select2((intensity == 0) | (ba.time == 0),
+                                s + aa.clip(0 - logRate/ma.SR, logRate/ma.SR, lf - s),
+                                lf))) ~ _ ;
+        };
+        vibrato = 0.005*os.osc(6)
+                + 0.02*simplexNoise(4.07)
+                + 0.04*simplexNoise(2.15)
+                + wobble*(0.2*simplexNoise(0.98) + 0.4*simplexNoise(0.5));
+    };
+
+    // newTenseness: UI tenseness + slow drift; in "always voice" mode the
+    // original also adds (3-tenseness)*(1-intensity), giving a pressed onset.
+    newTenseness(intensity) = tenseness + 0.1*simplexNoise(0.46) + 0.05*simplexNoise(0.36)
+                            + (voiced > 0)*(3 - tenseness)*(1 - intensity);
+
+    // ---- stage3: (intensity, newFrequency, newTenseness) -> (intensity, newTenseness, phase, wrap)
+    // per-period phasor: the frequency is sampled at the start of each glottal
+    // cycle (setupWaveform); wrap is 1 on the sample where a new period starts
+    stage3 = \(int1, nf, nt).(int1, nt, phaseAndWrap(nf));
+    phaseAndWrap(newFrequency) = (tick ~ (_,_)) : (_,!,_)
+    with {
+        tick(p, fl0) = pn - w, select2(w, fl, newFrequency), w
+        with {
+            fl = select2(fl0 > 0, newFrequency, fl0);  // first sample: no latched value yet
+            pn = p + fl/ma.SR;
+            w = pn >= 1;
+        };
+    };
+
+    // ---- stage4: (intensity, newTenseness, phase, wrap) -> the four outputs ----
+    stage4(intensity, newTenseness, phase, wrap) = glottalOutput, noiseModulator, intensity, phase
+    with {
+        loudness = pow(tenseness, 0.25);
+        // tenseness is sampled at the start of each glottal cycle too
+        Rd = 3*(1 - latch(wrap, newTenseness));
+        voice = lfWaveform(Rd, phase)*intensity*loudness;
+
+        voicedMod = 0.1 + 0.2*max(0, sin(2*ma.PI*phase));
+        noiseModulator = tenseness*intensity*voicedMod + (1 - tenseness*intensity)*0.3;
+        aspiration = intensity*(1 - sqrt(tenseness))*noiseModulator*aspirationNoise
+                   * (0.2 + 0.02*simplexNoise(1.99));
+
+        glottalOutput = voice + aspiration;
+    };
+};
+
+//=========================== Tract shape ==============================================
+//======================================================================================
+
+// Rest diameter of section i given the tongue position (TractUI.setRestDiameter
+// plus Tract.init for the sections outside the tongue range).
+restDiameter(tongueIndex, tongueDiameter, i) = ba.if(i < bladeStart, initial(i),
+                                               ba.if(i < lipStart, tongue, 1.5))
+with {
+    initial(j) = ba.if(j < 7*n/44 - 0.5, 0.6, ba.if(j < 12*n/44, 1.1, 1.5));
+    t = 1.1*ma.PI*(tongueIndex - i)/(tipStart - bladeStart);
+    fixedTongueDiameter = 2 + (tongueDiameter - 2)/1.5;
+    edge = ba.if((i == bladeStart-2) | (i == lipStart-1), 0.8,
+           ba.if((i == bladeStart) | (i == lipStart-2), 0.94, 1.0));
+    curve = (1.5 - fixedTongueDiameter + 1.7)*cos(t)*edge;   // 1.7 = gridOffset
+    tongue = 1.5 - curve;
+};
+
+// Target diameter of section i after applying a constriction at fractional
+// `index` with (touch-space) `diameter` (TractUI.handleTouches).
+constrictedDiameter(index, diameter, active, i, rest) =
+    select2(active & (index >= 2) & (index < n) & (diameter < 3) & (d < rest),
+            rest,
+            d + (rest - d)*shrink)
+with {
+    d = max(0, diameter - 0.3);
+    width = ba.if(index < 25, 10,
+            ba.if(index >= tipStart, 5, 10 - 5*(index - 25)/(tipStart - 25)));
+    relpos = abs(i - index) - 0.5;
+    shrink = ba.if(relpos <= 0, 0, ba.if(relpos > width, 1, 0.5*(1 - cos(ma.PI*relpos/width))));
+};
+
+// Slew rate ("slowReturn") for section i: the tract re-opens more slowly
+// towards the back.
+slowReturn(i) = ba.if(i < noseStart, 0.6,
+                ba.if(i >= tipStart, 1.0, 0.6 + 0.4*(i - noseStart)/(tipStart - noseStart)));
+
+//------------------------`(pt.)tractDiameters`-----------------------------------------
+// The 44 time-varying section diameters (after the original's movement
+// smoothing), as parallel signals.
+//
+// ```
+// tractDiameters(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive) : si.bus(44)
+// ```
+//-------------------------------------------------------------------------------------
+tractDiameters(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive) =
+    par(i, n, moveTowards(slowReturn(i)*movementSpeed, 2*movementSpeed, target(i)))
+with {
+    target(i) = constrictedDiameter(cIndex, cDiameter, cActive, i,
+                                    restDiameter(tongueIndex, tongueDiameter, i));
+};
+
+// Fixed nose diameters (Tract.init); section 0 is the velum, replaced dynamically.
+noseDiameterInit(i) = min(1.9, ba.if(d < 1, 0.4 + 1.6*d, 0.5 + 1.5*(2 - d)))
+with { d = 2*(i/noseLength); };
+
+// Nose reflections are computed once at init in the original with noseA[0]=0.16.
+noseArea(i) = noseDiameterInit(i)*noseDiameterInit(i);
+noseReflection(i) = (noseArea(i-1) - noseArea(i))/(noseArea(i-1) + noseArea(i));
+
+//=========================== Tract waveguide ==========================================
+//======================================================================================
+
+NSTATE = 2*n + 2*noseLength;  // 144 state signals: R[0..43], L[0..43], NR[0..27], NL[0..27]
+NREFL = n - 1 + 3;            // reflection coefficients: refl[1..43], reflLeft, reflRight, reflNose
+
+// Compile-time conditional for route() positions (c must be a constant 0/1).
+cif(c, a, b) = c*a + (1-c)*b;
+
+//------------------------`(pt.)tractTick`----------------------------------------------
+// One waveguide tick (the original's `Tract.runStep`) as a pure function of the state.
+//
+// ```
+// si.bus(NSTATE), glottal, si.bus(n), si.bus(NREFL) : tractTick : si.bus(NSTATE)
+// ```
+//
+// Inputs : R[0..43], L[0..43], NR[0..27], NL[0..27], glottal, inj[0..43],
+//          refl[1..43], reflLeft, reflRight, reflNose
+// Outputs: new state in the same order.
+// `inj[k]` is added to both R[k] and L[k] before scattering (transients and
+// turbulence); the nose reflections are constants (see `noseReflection`).
+//-------------------------------------------------------------------------------------
+tractTick = addInjections : junctionRoute : junctions : reorder : damping
+with {
+    // ---- stage A: R[k] += inj[k], L[k] += inj[k]; pass the rest through ----
+    NIN = NSTATE + 1 + n + NREFL;
+    NA = 4*n + 2*noseLength + 1 + NREFL;
+    addInjections = route(NIN, NA,
+                          par(k, n, (k+1, 2*k+1), (NSTATE+2+k, 2*k+2)),             // R[k], inj[k]
+                          par(k, n, (n+k+1, 2*n+2*k+1), (NSTATE+2+k, 2*n+2*k+2)),   // L[k], inj[k]
+                          par(k, 2*noseLength, (2*n+k+1, 4*n+k+1)),                 // NR, NL
+                          (NSTATE+1, 4*n+2*noseLength+1),                           // glottal
+                          par(k, NREFL, (NSTATE+1+n+k+1, 4*n+2*noseLength+1+k+1)))  // reflections
+                  : par(k, n, +), par(k, n, +), si.bus(2*noseLength), _, si.bus(NREFL);
+
+    // ---- stage B: scattering junctions ----
+    // Input order after stage A (1-based): R'[k]=k+1, L'[k]=n+k+1, NR[k]=2n+k+1,
+    // NL[k]=2n+noseLength+k+1, glottal, refl[1..43], reflLeft, reflRight, reflNose.
+    inR(k) = k+1;
+    inL(k) = n+k+1;
+    inNR(k) = 2*n+k+1;
+    inNL(k) = 2*n+noseLength+k+1;
+    inG = NSTATE+1;
+    inRefl(i) = NSTATE+1+i;              // i = 1..43
+    inReflLeft = NSTATE+1+n;
+    inReflRight = NSTATE+2+n;
+    inReflNose = NSTATE+3+n;
+    // Block input offsets (number of inputs consumed before each block):
+    // glottalEnd(2), junction(1..16)(3 each), noseJunction(6), junction(18..43)(3 each),
+    // lipEnd(1), noseJunction(1..27)(2 each), noseEnd(1).
+    offR(i) = cif(i <= noseStart, 3*i-1, 3*i+2);        // i >= 1
+    offLipL = 3*n+2;                                    // 134
+    offNJ(i) = offLipL+1 + 2*(i-1);                     // i >= 1
+    offNoseL = offLipL+1 + 2*(noseLength-1);            // 189
+    NB = offNoseL+1;                                    // 190 = inputs consumed by stage B
+    junctionRoute = route(NSTATE+1+NREFL, NB,
+        (inL(0), 1), (inG, 2),                                        // glottal end
+        par(j, n-1, jr(j+1)),                                         // interior junctions
+        (inR(n-1), offLipL+1),                                        // lip end
+        par(j, noseLength-1, (inNR(j), offNJ(j+1)+1), (inNL(j+1), offNJ(j+1)+2)),
+        (inNR(noseLength-1), offNoseL+1))
+    with {
+        jr(17) = (inReflLeft, offR(17)+1), (inReflRight, offR(17)+2), (inReflNose, offR(17)+3),
+                 (inR(16), offR(17)+4), (inL(17), offR(17)+5), (inNL(0), offR(17)+6);  // noseStart
+        jr(i)  = (inRefl(i), offR(i)+1), (inR(i-1), offR(i)+2), (inL(i), offR(i)+3);
+    };
+    // scattering blocks
+    glottalEnd(l0, g) = l0*glottalReflection + g;                     // -> jR[0]
+    junction(r, a, b) = a - w, b + w with { w = r*(a + b); };         // (r, R[i-1], L[i]) -> (jR[i], jL[i])
+    noseJunction(rl, rr, rn, a, b, c) =                               // (.., R[i-1], L[i], NL[0])
+        rr*b + (1+rr)*(a + c),                                        // jR[i]
+        rl*a + (1+rl)*(c + b),                                        // jL[i]
+        rn*c + (1+rn)*(b + a);                                        // nJR[0]
+    lipEnd = *(lipReflection);
+    blockR(0)  = glottalEnd;
+    blockR(17) = noseJunction;                                        // noseStart
+    blockR(i)  = junction;
+    junctions = par(i, n, blockR(i)), lipEnd,
+                par(j, noseLength-1, junction(noseReflection(j+1))), lipEnd;
+
+    // ---- stage C: back to state order (R = 0.999*jR[k], L = 0.999*jL[k+1], ...) ----
+    // Output positions (1-based) of stage B: glottalEnd(1), junction i (2 each),
+    // noseJunction(3), lipEnd(1), nose junction i (2 each), noseEnd(1).
+    posJR(0) = 1;
+    posJR(k) = cif(k <= noseStart, 2*k, 2*k+1);
+    posJL(k) = cif(k <= noseStart, 2*k+1, cif(k == n, 2*n+1, 2*k+2));
+    posNJR(0) = 2*noseStart+2;                                        // 36
+    posNJR(k) = 2*n+2 + 2*(k-1);
+    posNJL(k) = cif(k == noseLength, 2*n + 2*noseLength, 2*n+2 + 2*(k-1) + 1);
+    reorder = route(NSTATE, NSTATE,
+        par(k, n, (posJR(k), k+1)),
+        par(k, n, (posJL(k+1), n+k+1)),
+        par(k, noseLength, (posNJR(k), 2*n+k+1)),
+        par(k, noseLength, (posNJL(k+1), 2*n+noseLength+k+1)));
+    damping = par(k, 2*n, *(tractDamping)), par(k, 2*noseLength, *(noseDamping));
+};
+
+//------------------------`(pt.)tractReflections`---------------------------------------
+// Scattering coefficients from the 44 section diameters and the velum diameter.
+//
+// ```
+// si.bus(44), velum : tractReflections : si.bus(NREFL)
+// ```
+//-------------------------------------------------------------------------------------
+tractReflections = route(n+1, 2*(n-1) + 3,
+                         par(i, n-1, (i+1, 2*i+1), (i+2, 2*i+2)),     // (d[i-1], d[i]) pairs
+                         (noseStart+1, 2*(n-1)+1), (noseStart+2, 2*(n-1)+2), (n+1, 2*(n-1)+3))
+                 : par(i, n-1, refl), noseJunctionRefl
+with {
+    refl(d0, d1) = select2(a1 == 0, (a0 - a1)/max(ma.EPSILON, a0 + a1), 0.999)
+    with { a0 = d0*d0; a1 = d1*d1; };
+    noseJunctionRefl(d0, d1, dv) = (2*a0 - sA)/sA, (2*a1 - sA)/sA, (2*av - sA)/sA
+    with { a0 = d0*d0; a1 = d1*d1; av = dv*dv; sA = a0 + a1 + av; };
+};
+
+//------------------------`(pt.)tract`--------------------------------------------------
+// The Pink Trombone vocal tract: 44-section Kelly–Lochbaum waveguide with a
+// 28-section nasal branch, ticked twice per sample. Diameters, constriction and
+// velum drive the reflection coefficients; fricative noise and closure-release
+// transients are injected into the waveguide.
+//
+// #### Usage
+//
+// ```
+// tract(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal, glottalOutput, noiseModulator) : _
+// ```
+//
+// Where:
+//
+// * `tongueIndex`: 12..29 (default 12.9), `tongueDiameter`: 2.05..3.5 (default 2.43)
+// * `cIndex`: constriction position 2..44, `cDiameter`: constriction "touch"
+//   diameter 0..3 (3 = none; <=0.3 = full closure; ~0.4..0.6 = fricative)
+// * `cActive`: gate for the constriction (its turbulence fades in/out over 0.1 s
+//   like the original touch, and releasing a full closure fires a transient)
+// * `nasal`: 1 = velum open (0.4), 0 = closed (0.01)
+// * `glottalOutput`, `noiseModulator`: from `glottis`
+//
+// The output is `(lipOutput + noseOutput)` summed over both half-steps, times 0.125,
+// exactly as in the original.
+//-------------------------------------------------------------------------------------
+tract(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal, glottalOutput, noiseModulator) =
+    tractN(fricativeNoise, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal, glottalOutput, noiseModulator);
+
+//------------------------`(pt.)tractN`-------------------------------------------------
+// Same as `tract` but with an explicit turbulence noise source (the original's
+// 1 kHz, Q 0.5 bandpassed white noise) as first argument, for testing.
+//-------------------------------------------------------------------------------------
+tractN(fricNoise, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal, glottalOutput, noiseModulator) =
+    excBus : (body ~ si.bus(NSTATE)) : (par(k, NSTATE, !), _) : *(0.125)
+with {
+    NEXC = 1 + n + NREFL;   // glottal, inj[0..43], reflections
+
+    // ---- geometry (each signal generator instantiated ONCE; multiply-used buses
+    //      are distributed with explicit fan-out `<:` so the *box* graph stays small —
+    //      Faust substitutes `with`-definitions textually, and letting each of the 44
+    //      injection taps close over the diameter graph made the block diagram
+    //      explode: the WASM compiler of the online IDE ran out of memory
+    //      generating the SVG) ----
+    velumTarget = select2(nasal > 0, 0.01, 0.4);
+    velum = moveTowards(0.25*movementSpeed, 0.1*movementSpeed, velumTarget);
+    diameters = tractDiameters(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive);
+
+    // ---- turbulence noise level at the constriction ----
+    turb = 0.66*fricNoise*fricIntensity*noiseModulator*thinness*openness
+         * (cDiameter > 0) * (cIndex >= 2) * (cIndex <= n)
+    with {
+        fricIntensity = moveTowards(10, 10, cActive > 0) : aa.clip(0, 1);  // 0.1 s attack/release
+        thinness = 8*(0.7 - cDiameter) : aa.clip(0, 1);
+        openness = 30*(cDiameter - 0.3) : aa.clip(0, 1);
+    };
+    idx = floor(cIndex);
+    delta = cIndex - idx;
+
+    // ---- transients: (lastObstruction, velum) -> (transEnv, transPos) ----
+    // The original detects the release in `reshapeTract`, one block after the
+    // diameter first became positive, so the pulse is delayed by one block here too.
+    obstructedIdx(i, d) = ba.if(d <= 0, i, -1);
+    lastObsAndVelum = (par(i, n, obstructedIdx(i)) : ba.parallelMax(n)), _;  // d[0..43], velum -> lastObs, velum
+    transientPair(lo, vel) = transEnv, transPos
+    with {
+        blockSamples = int(512);
+        releaseTrig = (((lo' > -1) & (lo == -1) & (ba.time > 0)) @ blockSamples) & (vel*vel < 0.05);
+        transEnv = (\(e).(e*pow(2, -200.0/ma.SR) + 0.3*releaseTrig)) ~ _;  // strength 0.3, exponent 200
+        transPos = latch(releaseTrig, lo' @ blockSamples);
+    };
+
+    // one injection tap: (transEnv, transPos, turb, idx, delta) -> inj[k]
+    injTap(k) = \(e, p, t, ix, dl).(0.5*e*(k == p) + 0.5*t*((k == ix+1)*(1 - dl) + (k == ix+2)*dl));
+
+    // ---- the excitation bus: glottal, inj[0..43], reflections (built once) ----
+    excBus = glottalOutput,
+             (((diameters, velum) <: (tractReflections, lastObsAndVelum))  // refl(NREFL), lastObs, velum
+              : (si.bus(NREFL), transientPair), turb, idx, delta           // refl(NREFL), e, p, t, ix, dl
+              : route(NREFL+5, NREFL+5,
+                      par(i, NREFL, (i+1, i+6)),
+                      par(i, 5, (NREFL+1+i, i+1)))                         // e, p, t, ix, dl, refl(NREFL)
+              : (si.bus(5) <: par(k, n, injTap(k))), si.bus(NREFL));       // inj(n), refl(NREFL)
+
+    // ---- two waveguide ticks per sample, summing lip+nose output of each ----
+    tapOut = si.bus(NSTATE) <: si.bus(NSTATE), (route(NSTATE, 2, (n, 1), (2*n + noseLength, 2)) : +);  // lipOutput + noseOutput
+    tickTap = tractTick : tapOut;                                          // state, exc -> state, out
+    // body: state, exc -> state, out1+out2 (exc duplicated as wires, not as subgraphs)
+    body = (si.bus(NSTATE), (si.bus(NEXC) <: si.bus(2*NEXC)))
+         : (tickTap, si.bus(NEXC))
+         : route(NSTATE+1+NEXC, NSTATE+NEXC+1,
+                 par(i, NSTATE, (i+1, i+1)),
+                 (NSTATE+1, NSTATE+NEXC+1),
+                 par(i, NEXC, (NSTATE+2+i, NSTATE+1+i)))
+         : (tickTap, _)
+         : (si.bus(NSTATE), +);
+};
+
+//=========================== Full instrument ==========================================
+//======================================================================================
+
+//------------------------`(pt.)pinkTrombone`-------------------------------------------
+// Glottis + tract. Mono output.
+//
+// ```
+// pinkTrombone(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter,
+//              cIndex, cDiameter, cActive, nasal) : _
+// ```
+//-------------------------------------------------------------------------------------
+pinkTrombone(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal) =
+    glottis(freq, tenseness, voiced, wobble) : (_,_,!,!)
+    : tract(tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal);
+
+//------------------------`(pt.)ui`-----------------------------------------------------
+// Demo interface mirroring the original controls.
+//-------------------------------------------------------------------------------------
+ui = hgroup("[0] Pink Trombone",
+    pinkTrombone(freq, tenseness, voiced, wobble, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal)
+)
+with {
+    vb(x) = vgroup("[0] voicebox", x);
+    tr(x) = vgroup("[1] tract", x);
+    cs(x) = vgroup("[2] constriction", x);
+    // keyboard: baseNote F2 = 87.3071 Hz, 20 semitones
+    semitone = vb(hslider("[0] pitch [unit:semitones][style:knob]", 9, 0, 20, 0.01));
+    freq = 87.3071*pow(2, semitone/12);
+    tenseness = vb(hslider("[1] tenseness [style:knob]", 0.6, 0, 1, 0.001));
+    voiced = vb(checkbox("[2] always voice"));
+    wobble = vb(checkbox("[3] pitch wobble"));
+    tongueIndex = tr(hslider("[0] tongue index [style:knob]", 12.9, tongueIndexMin, tongueIndexMax, 0.01));
+    tongueDiameter = tr(hslider("[1] tongue diameter [style:knob]", 2.43, tongueDiameterMin, tongueDiameterMax, 0.01));
+    nasal = tr(checkbox("[2] nasal (velum open)"));
+    cIndex = cs(hslider("[0] index [style:knob]", 30, 2, n, 0.01));
+    cDiameter = cs(hslider("[1] diameter [style:knob]", 1.0, 0, 3, 0.01));
+    cActive = cs(checkbox("[2] active"));
+};

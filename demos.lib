@@ -75,6 +75,7 @@ aa = library("aanl.lib");
 sp = library("spats.lib");
 mo = library("motion.lib");
 hy = library("hysteresis.lib");
+pt = library("pinktrombone.lib");
 
 declare name "Faust Demos Library";
 declare version "1.4.0";
@@ -2903,3 +2904,28 @@ with {
 };
 
 // end further contributions section
+
+//====================================Pink Trombone======================================
+//========================================================================================
+
+//----------------------------`(dm.)pink_trombone_demo`----------------------------------
+// Neil Thapen's Pink Trombone vocal-tract synthesiser (see `pinktrombone.lib`) with its
+// original controls: voicebox (pitch, tenseness, always voice, pitch wobble), tract
+// (tongue index/diameter, nasal) and one constriction (index, diameter, active).
+//
+// #### Usage
+//
+// ```
+// pink_trombone_demo : _
+// ```
+//
+// #### Test
+// ```
+// dm = library("demos.lib");
+// pink_trombone_demo_test = dm.pink_trombone_demo;
+// ```
+//------------------------------------------------------------
+declare pink_trombone_demo author "David Braun";
+declare pink_trombone_demo licence "MIT";
+
+pink_trombone_demo = pt.ui;
