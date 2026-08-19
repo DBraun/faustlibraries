@@ -639,3 +639,92 @@ with {
         d = ba.if(ma.signum(alpha) > 0, 0, -0.7196);
     };
 };
+
+//-----------------`(no.)simplex2`, `(no.)simplex1`, `(no.)simplex1_lf`--------------------
+// Simplex gradient noise (Ken Perlin, 2001), in the 2-D formulation of Stefan
+// Gustavson ("Simplex noise demystified", 2005) as implemented in Joseph Gentle's
+// `noisejs`, which is what Neil Thapen's *Pink Trombone* uses for its slow random
+// drift. Unlike filtered white noise, simplex noise is a smooth (C²) deterministic
+// function of its argument, bounded to [-1,1], zero at the lattice points, with
+// essentially no energy above ~2 cycles per unit of the argument.
+//
+// #### Usage
+//
+// ```
+// simplex2(seed, x, y) : _     // 2-D noise at coordinates (x,y)
+// simplex1(seed, x) : _        // 1-D noise: simplex2(seed, 1.2*x, -0.7*x) (as in noisejs / Pink Trombone)
+// simplex1_lf(seed, rate) : _  // simplex1 driven by time: x = t*rate, i.e. a low-frequency noise
+//                              // with ~rate "features" per second (std ~0.44)
+// ```
+//
+// Where:
+//
+// * `seed`: integer 0..65535 selecting the permutation table (constant). Values below
+//   256 are mirrored into the high byte like the original (`seed |= seed<<8`)
+// * `x`, `y`: coordinates (any signal); one lattice cell is one unit
+// * `rate`: features per second for `simplex1_lf`
+//
+// #### Test
+// ```
+// no = library("noises.lib");
+// simplex2_test = no.simplex2(12345, os.lf_sawpos(1)*10, 0.5);
+// simplex1_lf_test = no.simplex1_lf(12345, 4.07);
+// ```
+//
+// #### References
+//
+// * S. Gustavson, "Simplex noise demystified", Linköping University, 2005.
+// * J. Gentle, `noisejs` <https://github.com/josephg/noisejs> (ISC/public-domain port
+//   of Gustavson's Java code); N. Thapen, *Pink Trombone* (2017) uses `simplex1`.
+//-----------------------------------------------------------------------------------
+declare simplex2 author "David Braun (Faust port of Stefan Gustavson's / Joseph Gentle's code)";
+declare simplex2 license "MIT";
+
+simplex2(seed, x, y) = (x, y) : skew : corners : sum3
+with {
+    F2 = 0.5*(sqrt(3.0) - 1.0);
+    G2 = (3.0 - sqrt(3.0))/6.0;
+    // staged so shared intermediates travel as wires: Faust substitutes plain
+    // definitions textually, and the nested corner/gradient expressions made
+    // the *block diagram* of every simplex noise instance explode (the signal
+    // compiler CSEs the duplicates, the SVG drawer does not)
+    skew = \(xin, yin).(xin, yin, int(floor(xin + (xin + yin)*F2)), int(floor(yin + (xin + yin)*F2)))
+         : \(xin, yin, i, j).(xin - i + (i + j)*G2, yin - j + (i + j)*G2, i & 255, j & 255)
+         : \(x0, y0, ii, jj).(x0, y0, x0 > y0, ii, jj, perm(jj), perm(jj + 1));
+    corners = \(x0, y0, lower, ii, jj, pj, pj1).(
+                  corner(x0, y0, perm(ii + pj) % 12),
+                  corner(x0 - lower + G2, y0 - (1 - lower) + G2,
+                         perm(ii + lower + perm(jj + (1 - lower))) % 12),
+                  corner(x0 - 1.0 + 2.0*G2, y0 - 1.0 + 2.0*G2, perm(ii + 1 + pj1) % 12));
+    sum3 = \(n0, n1, n2).(70.0*(n0 + n1 + n2));
+    // contribution of one corner: (0.5 - r^2)^4 * (grad . offset), 0 outside the kernel
+    corner(cx, cy, cg) = (cx, cy, cg) : \(x1, y1, gi).(0.5 - x1*x1 - y1*y1, gradx(gi)*x1 + grady(gi)*y1)
+                       : \(t0, gd).(select2(t0 < 0, t0*t0*t0*t0*gd, 0));
+    // seeded permutation table: perm[k] = p[k & 255] ^ (k odd ? seed & 255 : seed >> 8 & 255)
+    // (indices only ever reach 511 and k+256 has the same parity as k, so no doubled table is needed)
+    sd = select2(seed < 256, seed, seed | (seed << 8));
+    perm(k) = rdtable(pwave, (k & 255)) xor select2(k & 1, (sd >> 8) & 255, sd & 255);
+    gradx(g) = rdtable(waveform{1,-1,1,-1,1,-1,1,-1,0,0,0,0}, g);
+    grady(g) = rdtable(waveform{1,1,-1,-1,0,0,0,0,1,-1,1,-1}, g);
+    pwave = waveform{
+        151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,
+        140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,
+        247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,
+        57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,
+        74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,
+        60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,
+        65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,
+        200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,
+        52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,
+        207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,
+        119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,
+        129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,
+        218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,
+        81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,
+        184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,
+        222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
+    };
+};
+simplex1(seed, x) = simplex2(seed, x*1.2, 0 - x*0.7);
+simplex1_lf(seed, rate) = simplex1(seed, ba.time*(rate/ma.SR));
+
