@@ -15,9 +15,16 @@ take two independent constrictions, like the original's multi-touch), `pt.glotti
 - `simplex-noise-fit.md` — the 1-D simplex drift noise (`no.simplex1_lf` in
   `noises.lib`, exact) and the history of the earlier statistical substitute.
 - `ptref.py` — line-by-line Python port of the JS `Tract`/`Glottis` used as the
-  reference. `fh.py` — DawDreamer render helper. `validate.py` — compares the Faust
-  code with the reference: `python3.11 tests/pinktrombone/validate.py`
+  reference (multi-touch capable). `fh.py` — DawDreamer render helper. `validate.py` —
+  compares the Faust code with the reference: `python3.11 tests/pinktrombone/validate.py`
   (needs dawdreamer, numpy, scipy).
+- `speak.py` — phoneme-to-trajectory sequencer: compiles an ARPAbet-ish phoneme
+  string into per-sample automation for `pt.ui` and renders it
+  (`python3.11 speak.py "HH AH . L OW | W ER L D" out.wav`, or `--demo` for the
+  phrases in `listening/speak_*.wav`). Vowels are calibrated against the engine
+  itself (LPC formant matching, method in the module docstring); rounded vowels
+  and clusters use the second constriction bus. No laterals/trills — a 1-D tract
+  cannot say [l]/[r] properly; L and R are approximations.
 - `../pinktrombone_tests.dsp` — deterministic `_test` specs for `make reference/check`;
   `dm.pink_trombone_demo` in `demos.lib` (`../demos_tests.dsp`).
 - Not committed (gitignored): the original page — fetch with

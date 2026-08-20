@@ -145,6 +145,18 @@ instead of two `ba.selectn(144, .)` selection trees for the lip/nose output taps
 `moveTowards` (asymmetric *linear* slew) has no library equivalent (`si.lag_ud` /
 `si.onePoleSwitching` are exponential).
 
+## Speech sequencing (`speak.py`, 2026-08-19)
+
+The port is driven programmatically through `pt.ui` automation. `speak.py` holds the
+empirically calibrated vowel map (grid sweep -> LPC F1/F2 -> matched to canonical
+male formant targets; all residuals < 0.15 log units once rounded vowels got a lip
+constriction on bus 2) and a segment compiler whose smoothing is the tract's own
+`moveTowards` dynamics — no extra parameter filtering except a 30 ms hann on pitch
+and tenseness. Voicelessness is `tenseness -> 0.05` (pulse amplitude scales with
+`tenseness^0.25`, aspiration remains), voiced/unvoiced gating of the utterance uses
+`always voice`. Known limits: no laterals or trills (1-D tract), [l]/[r] are
+approximant stand-ins.
+
 ## Faust lessons
 
 - Numeric comparisons (`k <= 17`) fold at box level and can be used inside `route()`
