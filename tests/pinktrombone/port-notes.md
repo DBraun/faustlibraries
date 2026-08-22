@@ -55,7 +55,7 @@ exists: `voiced` gate); pitch keyboard geometry (use `freq` in Hz; `pt.ui` expos
 | `reshapeTract`: `moveTowards(d, target, slowReturn·amount, 2·amount)` per block | per-sample `moveTowards` with the same rates (cm/s): opening 0.6..1.0 × 15, closing 30 |
 | velum `noseDiameter[0]` → target 0.01 / 0.4 at rates 0.25·15 up, 0.1·15 down | same |
 | transients: fired when `lastObstruction` clears and `noseA[0] < 0.05`, `0.3·2^(-200 t)`, added ½ to R and L at the obstruction index each tick | `releaseTrig`/`transEnv`; delayed by one block (512 samples) because the JS detects the release one block after the diameter became positive — this makes the release burst amplitude match (0.155 vs 0.145 peak in the test) |
-| turbulence: `0.66·noise·fricative_intensity·noiseModulator·thinness·openness`, split between `index+1`/`index+2` by the fractional part, ½ to R and L | `turbulenceInj(k)`; `fricative_intensity` = 0.1 s linear attack/release of the `cActive` gate |
+| turbulence: `0.66·noise·fricative_intensity·noiseModulator·thinness·openness`, split between `index+1`/`index+2` by the fractional part, ½ to R and L | `turbulenceInj(k)`; `fricative_intensity` = 0.1 s linear attack/release of the `cActive` gate; the JS `if (touch.diameter <= 0) continue` guard is **not** ported because it is dead code — `openness = clamp(30(d-0.3),0,1)` is already 0 for `d <= 0.3` (checked: dropping it is bit-identical over a `d` sweep from -1 to 3) |
 | `updateAmplitudes` / `maxAmplitude` (drawing only) | dropped |
 
 ## Tract shape (`TractUI`)
@@ -172,3 +172,12 @@ approximant stand-ins.
   into function parameters instead of referencing `with`-definitions repeatedly
   (see the block-diagram section above) — otherwise `-svg` and the online IDE blow up.
 - `^` is power, not XOR (`xor`); `waveform{…}, idx : rdtable` is the table idiom.
+- Because `moveTowards` starts *on* its target, freezing the articulation freezes
+  every derived coefficient from sample 0: `tractN2` with `fricNoise = 0` and
+  constant shape arguments is exactly LTI from `glottalOutput` to the output (no
+  start-up ramp, no release transient). Measured at 44.1 kHz: shifting an impulse
+  by 1000 samples reproduces the response bit-exactly, superposition holds to
+  float32 rounding (~1e-6 on a peak of 2.7), and convolving with the first 4000
+  samples of the impulse response matches the live tract to the same accuracy.
+  So a fixed vocal-tract shape can be analysed or replaced by an FIR in a
+  ten-line `.dsp` — no reimplementation needed.

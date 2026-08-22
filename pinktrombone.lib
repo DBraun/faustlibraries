@@ -122,6 +122,8 @@ tongueDiameterMax = 3.5;
 // Asymmetric slew limiter (rates in units/second). y(0) = x(0): the state is
 // the deviation from the target so the smoother starts *on* its target
 // instead of at 0 (avoids a spurious "opening" of the tract at start-up).
+// A constant input therefore gives a constant output, with no ramp at any
+// point — which is what makes a frozen articulation exactly LTI (see `tractN`).
 moveTowards(up, dn, x) = x - e
 with {
     dx = (x - x') * (ba.time > 0);
@@ -510,6 +512,17 @@ tract2(tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a, nasal, glottal
 //------------------------`(pt.)tractN`-------------------------------------------------
 // Same as `tract` / `tract2` but with an explicit turbulence noise source (the
 // original's 1 kHz, Q 0.5 bandpassed white noise) as first argument, for testing.
+//
+// With `fricNoise = 0` and *constant* articulation arguments, `tractN`/`tractN2`
+// reduce to the bare linear waveguide, which is exactly LTI from `glottalOutput`
+// to the output: `moveTowards` starts on its target, so constant articulation
+// never ramps, the reflection coefficients are constants, and no release
+// transient can fire. Its impulse response then characterises it completely
+// (useful for FIR/formant analysis of a fixed vocal-tract shape):
+//
+// ```
+// process = tractN2(0, 12.9, 2.43, 30, 1, 1, 20, 3, 0, 0, _, 0);
+// ```
 //-------------------------------------------------------------------------------------
 tractN(fricNoise, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, nasal, glottalOutput, noiseModulator) =
     tractN2(fricNoise, tongueIndex, tongueDiameter, cIndex, cDiameter, cActive, 30, 3, 0, nasal, glottalOutput, noiseModulator);
@@ -531,8 +544,11 @@ with {
     diameters = tractDiameters2(tongueIndex, tongueDiameter, c1i, c1d, c1a, c2i, c2d, c2a);
 
     // ---- turbulence noise level at each constriction ----
+    // The original also skips a touch with `diameter <= 0`, but that guard is
+    // subsumed by `openness` (already 0 for cd <= 0.3), so only the index
+    // bounds are kept here.
     turbOf(ci, cd, ca) = 0.66*fricNoise*fricIntensity*noiseModulator*thinness*openness
-                       * (cd > 0) * (ci >= 2) * (ci <= n)
+                       * (ci >= 2) * (ci <= n)
     with {
         fricIntensity = moveTowards(10, 10, ca > 0) : aa.clip(0, 1);  // 0.1 s attack/release
         thinness = 8*(0.7 - cd) : aa.clip(0, 1);
