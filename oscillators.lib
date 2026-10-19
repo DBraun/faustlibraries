@@ -2376,7 +2376,7 @@ with {
     MAX_DELAY = 4096;
     osc_out = sawtooth(f);
     delay_samples = max(0.01, amt * 0.5 * ma.SR / f + detune);
-    delayed = de.fdelaylti(4, MAX_DELAY, delay_samples, osc_out);
+    delayed = de.fdelayltv(4, MAX_DELAY, delay_samples, osc_out);
 
     pwm_out = osc_out - delayed;
     morph_out = osc_out - amt * delayed;

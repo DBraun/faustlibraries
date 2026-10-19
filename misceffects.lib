@@ -1624,7 +1624,7 @@ with {
 //-----------------------------------------
 declare doppler_shift author "David Lowenfels";
 
-doppler_shift(freq, ratio, sig) = de.fdelaylti(4, MAX_DELAY, delay_samples, sig)
+doppler_shift(freq, ratio, sig) = de.fdelayltv(4, MAX_DELAY, delay_samples, sig)
 with {
     MAX_DELAY = 4096;
     period_samples = ma.SR / freq;
