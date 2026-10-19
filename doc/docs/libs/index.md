@@ -1104,6 +1104,7 @@
 [(si.)bsmooth](signals.md#sibsmooth)
 [(si.)dot](signals.md#sidot)
 [(si.)smooth](signals.md#sismooth)
+[(si.)smoothExact](signals.md#sismoothexact)
 [(si.)smoothq](signals.md#sismoothq)
 [(si.)cbus](signals.md#sicbus)
 [(si.)cmul](signals.md#sicmul)

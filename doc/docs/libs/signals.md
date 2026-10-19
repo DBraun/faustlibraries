@@ -149,6 +149,10 @@ Smoothing function based on `smooth` ideal to smooth UI signals
 low-pass considering the coefficient calculation:
    exp(-2pi*CF/SR).
 
+In single precision its output settles near a constant input, not on it (1 - 2.6e-4
+for a slider at 1 at 192 kHz, see `smooth`); `smoothExact(1 - 44.1/ma.SR)` settles
+exactly.
+
 `smoo` is a standard Faust function.
 
 #### Usage
@@ -286,6 +290,12 @@ s>1 is unstable, and s=1 yields the zero signal for all inputs.
 The exponential time-constant is approximately 1/(1-s) samples, when s is close to
 (but less than) 1.
 
+In single precision the output settles near a constant input, not on it: the
+recursion stops moving once its step rounds to zero, within about
+2^-24 |x| / (1 - s) of the input `x`. With the pole of `smoo`, a slider at 1
+settles at 1 - 2.8e-5 at 48 kHz and 1 - 2.6e-4 at 192 kHz. `smoothExact` settles
+exactly, for control signals.
+
 #### Example
 
 ```
@@ -308,6 +318,69 @@ smooth_jump_test = no.noise : si.smooth(1 - 0.1*pow(0.001, sq)) with { P = int(m
 
 * [https://ccrma.stanford.edu/~jos/mdft/Convolution_Example_2_ADSR.html](https://ccrma.stanford.edu/~jos/mdft/Convolution_Example_2_ADSR.html)
 * [https://ccrma.stanford.edu/~jos/aspf/Appendix_B_Inspecting_Assembly.html](https://ccrma.stanford.edu/~jos/aspf/Appendix_B_Inspecting_Assembly.html)
+
+----
+
+### `(si.)smoothExact`
+
+Exponential smoothing by a unity-dc-gain one-pole lowpass, like `smooth`, whose
+output settles exactly on a constant input in single precision. It is meant for
+control signals: sliders, and parameters that hold between changes.
+
+`smooth` stops moving once its step rounds to zero, within about
+2^-24 |x| / (1 - s) of a constant input `x`: with the pole of `smoo`, a slider at
+1 settles at 1 - 2.6e-4 at 192 kHz in single precision. `smoothExact` keeps the
+distance to the input as its state, e[n] = s (e[n-1] + x[n] - x[n-1]), and
+outputs y[n] = x[n] - e[n]. In exact arithmetic this is `smooth(s)`, for a
+constant or a varying `s`, and in double precision the two agree to 1e-13 on
+the regression tests. When the input stops changing, e decays to 0 and the
+output is the input.
+
+The input difference x[n] - x[n-1] passes through `max(-3.0e38, _)`, which leaves
+it unchanged but keeps the compiler from regrouping the sum: written as
+s * (e + (x - x')), Faust normalizes the recursion to s * (x + (e - x')), where
+e is rounded against the input and the output stalls again (a slider at 500
+settled at 499.983 at 48 kHz).
+
+On an audio signal it is less precise than `smooth` in single precision: when
+the output is much smaller than the input, y = x - e cancels (on noise with
+s = 0.999, the float/double sample gap is 4e-5 of the peak, against 7.5e-6 for
+`smooth`). It costs about 1.3 times `smooth` per sample.
+
+After a change of the input, e decays through the subnormal range: with the
+pole of `smoo`, after about 2 s and for about 0.4 s, at any sample rate. On
+Apple Silicon this costs nothing. On an x86 processor without flush-to-zero
+subnormal arithmetic is slow; Faust's `-ftz` option or an architecture that
+sets flush-to-zero (`AVOIDDENORMALS`) removes it.
+
+#### Usage
+
+```
+_ : smoothExact(s) : _
+```
+
+Where:
+
+* `s`: smoothness between 0 and 1, as for `smooth`: s=0 for no smoothing, and
+  the exponential time-constant is approximately 1/(1-s) samples
+
+#### Example
+
+```
+hslider(...) : smoothExact(1 - 44.1/ma.SR) : _   // the pole of smoo
+```
+
+#### Test
+```
+si = library("signals.lib");
+ba = library("basics.lib");
+ma = library("maths.lib");
+smoothExact_test = hslider("smoothExact:input", 0.5, -1, 1, 0.01) : si.smoothExact(0.9);
+smoothExact_smoo_test = hslider("smoothExact:input", 1, 0, 2, 0.01) : si.smoothExact(1 - 44.1/ma.SR);
+smoothExact_slider_test = 1 + (ba.period(2*Q) < Q) : si.smoothExact(hslider("smoothExact:s", 0.999, 0, 0.9999, 0.0001)) with { Q = int(ma.SR/25); };
+smoothExact_modulated_test = 1 + (ba.period(2*Q) < Q) : si.smoothExact(1 - 0.1*pow(0.001, tri)) with { Q = int(ma.SR/25); P = int(ma.SR/10); tri = 1 - abs(2*ba.period(P)/P - 1); };
+smoothExact_jump_test = 1 + (ba.period(2*Q) < Q) : si.smoothExact(1 - 0.1*pow(0.001, sq)) with { Q = int(ma.SR/25); P = int(ma.SR/10); sq = ba.period(2*P) < P; };
+```
 
 ----
 

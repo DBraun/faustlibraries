@@ -42,6 +42,11 @@ smooth_test = hslider("smooth:input", 0.5, -1, 1, 0.01) : si.smooth(0.9);
 smooth_slider_test = no.noise : si.smooth(hslider("smooth:s", 0.999, 0, 0.9999, 0.0001));
 smooth_modulated_test = no.noise : si.smooth(1 - 0.1*pow(0.001, tri)) with { P = int(ma.SR/10); tri = 1 - abs(2*ba.period(P)/P - 1); };
 smooth_jump_test = no.noise : si.smooth(1 - 0.1*pow(0.001, sq)) with { P = int(ma.SR/10); sq = ba.period(2*P) < P; };
+smoothExact_test = hslider("smoothExact:input", 0.5, -1, 1, 0.01) : si.smoothExact(0.9);
+smoothExact_smoo_test = hslider("smoothExact:input", 1, 0, 2, 0.01) : si.smoothExact(1 - 44.1/ma.SR);
+smoothExact_slider_test = 1 + (ba.period(2*Q) < Q) : si.smoothExact(hslider("smoothExact:s", 0.999, 0, 0.9999, 0.0001)) with { Q = int(ma.SR/25); };
+smoothExact_modulated_test = 1 + (ba.period(2*Q) < Q) : si.smoothExact(1 - 0.1*pow(0.001, tri)) with { Q = int(ma.SR/25); P = int(ma.SR/10); tri = 1 - abs(2*ba.period(P)/P - 1); };
+smoothExact_jump_test = 1 + (ba.period(2*Q) < Q) : si.smoothExact(1 - 0.1*pow(0.001, sq)) with { Q = int(ma.SR/25); P = int(ma.SR/10); sq = ba.period(2*P) < P; };
 
 smoothq_test = hslider("smoothq:input", 0.5, -1, 1, 0.01) : si.smoothq(0.25, 0.5);
 smoothq_linear_test = select2(ba.period(2*P) < P, -1, 1) : si.smoothq(0.25, 1)
