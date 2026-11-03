@@ -564,7 +564,8 @@ zita_rev1_test = stereoOsc(440, 442) : dm.zita_rev1;
 
 ### `(dm.)vital_rev_demo`
 
-Example GUI for `vital_rev` with all parameters exposed.
+Example GUI for `vital_rev` with all parameters exposed directly, without
+additional slider smoothing.
 
 #### Usage
 

@@ -1,0 +1,245 @@
+// Frozen source-parity oracle, not the public audio-rate implementation.
+// Vital C++ source: 636ca0ef517a4db087a6a08a6a8a5e704e21f836.
+import("stdfaust.lib");
+
+vital_rev(_prelow, _prehigh, _lowcutoff, _highcutoff, _lowgain, _highgain, _chorus_amt, _chorus_freq, _predelay, _time, _size, _mix) = mix
+with {
+    /* Copyright 2013-2019 Matt Tytel
+    *
+    * vital is free software: you can redistribute it and/or modify
+    * it under the terms of the GNU General Public License as published by
+    * the Free Software Foundation, either version 3 of the License, or
+    * (at your option) any later version.
+    *
+    * vital is distributed in the hope that it will be useful,
+    * but WITHOUT ANY WARRANTY; without even the implied warranty of
+    * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+    * GNU General Public License for more details.
+    *
+    * You should have received a copy of the GNU General Public License
+    * along with vital. If not, see <http://www.gnu.org/licenses/>.
+    */
+
+    kBaseSampleRate = 44100; // it's ok if ma.SR is not 44100, but don't change this
+    kT60Amplitude = 0.001;
+    kAllpassFeedback = 0.6;
+
+    kMaxChorusDrift = 2500.0; // samples
+    kMinDecayTime = 0.1; // seconds
+    kMaxDecayTime = 100.0; // seconds
+    kMaxChorusFrequency = 16.0; // Hz
+
+    kPreDelayMaxSec = 0.3; // seconds
+
+    kNetworkContainers = 4; // the number of delay lines used for allpassDelay
+    kContainerSize = 4; // how long the allpassDelay waveforms below are
+
+    kMinSizePower = -3;
+    kMaxSizePower = 1; // decrease this to shorten the delay lines and reduce memory cost.
+
+    clampremap(from1, from2, to1, to2) = aa.clip(from1, from2) : it.remap(from1, from2, to1, to2);
+
+    low_pre_cutoff_frequency = _prelow : clampremap(0, 1, 16, 135) : min(130) : source_midi;
+    high_pre_cutoff_frequency = _prehigh : clampremap(0, 1, 16, 135) : min(130) : source_midi;
+
+    low_cutoff_frequency = _lowcutoff : clampremap(0, 1, 16, 135) : min(130) : source_midi;
+    high_cutoff_frequency = _highcutoff : clampremap(0, 1, 16, 135) : min(130) : source_midi;
+    low_gain = _lowgain : clampremap(0, 1, -24, 0);
+    high_gain = _highgain : clampremap(0, 1, -24, 0);
+
+    chorus_amount(i) = _chorus_amt : aa.clip(0, 1) : quadScale
+        : *(kMaxChorusDrift) : materialize : *(sample_rate_ratio) : materialize : min(minimum_feedback(i)-32);
+    minimum_feedback(i) = min(min(feedbackDelay(0, i), feedbackDelay(1, i)),
+                              min(feedbackDelay(2, i), feedbackDelay(3, i)));
+    chorus_frequency = _chorus_freq : exp(it.remap(0, 1, -8, 3)) : min(kMaxChorusFrequency);
+
+    pre_delay_samples = materialize(materialize(aa.clip(0, 1, _predelay)*kPreDelayMaxSec)*ma.SR);
+    decay_samples = _time : exp(it.remap(0, 1, -6, 6)) : aa.clip(kMinDecayTime, kMaxDecayTime) : _*kBaseSampleRate;
+    size = _size : aa.clip(0, 1);
+
+    wetAmount = _mix : aa.clip(0, 1);
+
+    // Restore the source's division rounding after reciprocal strength reduction.
+    // The power-of-two splits give exact residuals on these control ranges.
+    divide1200(x) = materialize(q+materialize(r*(1.0/1200))) with {
+        q = materialize(x*(1.0/1200));
+        r = materialize(materialize(materialize(materialize(x-materialize(1024*q))-materialize(128*q))-materialize(32*q))-materialize(16*q));
+    };
+    divide20(x) = materialize(q+materialize(r*0.05)) with {
+        q = materialize(x*0.05); r = materialize(materialize(x-materialize(16*q))-materialize(4*q));
+    };
+    source_gain(x) = pow(10, divide20(materialize(x)));
+    quadScale(x) = materialize(x*x);
+    source_midi(x) = materialize(8.1757989156*pow(2, divide1200(materialize(x*100))));
+
+    kNetworkSize = kNetworkContainers * kContainerSize;
+
+    containerBus = si.bus(kContainerSize);
+    networkBus = si.bus(kNetworkSize);
+
+    // Vital's fifth-order exp2 approximation is part of its delay tuning.
+    source_exp2(x) = pow(2, n)*(1 + t*(16970.0/24483.0 + t*(1960.0/8161.0
+        + t*(1360.0/24483.0 + t*(80.0/8161.0 + t*32.0/24483.0)))))
+    with { n = floor(x+0.5); t = x-n; };
+    // Its log2(2) approximation rounds to 1 + 2^-22 in float.
+    size_target = source_exp2((size*(kMaxSizePower-kMinSizePower)+kMinSizePower)*(1+1.0/4194304));
+    size_mult = hold(size_target);
+
+    // Retain the source division rather than multiplying by a reciprocal.
+    sample_rate_ratio = ma.SR/attach(kBaseSampleRate, ma.SR);
+
+    // Vital sizes its interleaved diffuser buffers in powers of two.
+    buffer_scale = pow(2, ma.nextpow2(max(1, sample_rate_ratio)));
+    kAllpassMaxDelay = int(1019*buffer_scale);
+    // allpassDelay(i) where `i` corresponds to 0 to (kNetworkContainers-1)
+    allpassDelay(0, i) = ba.take(i+1, (1001, 799, 933, 876));
+    allpassDelay(1, i) = ba.take(i+1, (895, 807, 907, 853));
+    allpassDelay(2, i) = ba.take(i+1, (957, 1019, 711, 567));
+    allpassDelay(3, i) = ba.take(i+1, (833, 779, 663, 997));
+
+    kFeedbackMaxDelay = (11329 + kMaxChorusDrift)*sample_rate_ratio*pow(2, kMaxSizePower); // pow(2, kMaxSizePower) is the max size_mult
+    // feedbackDelayHelp(i) where `i` corresponds to 0 to (kNetworkContainers-1)
+    feedbackDelayHelp(0, i) = ba.take(i+1, (6753.2, 9278.4, 7704.5, 11328.5));
+    feedbackDelayHelp(1, i) = ba.take(i+1, (9701.12, 5512.5, 8480.45, 5638.65));
+    feedbackDelayHelp(2, i) = ba.take(i+1, (3120.73, 3429.5, 3626.37, 7713.52));
+    feedbackDelayHelp(3, i) = ba.take(i+1, (4521.54, 6518.97, 5265.56, 5630.25));
+
+    feedbackDelay(i, j) = materialize(materialize(feedbackDelayHelp(i, j)*size_mult)*sample_rate_ratio);
+
+    getDecay(i, j) = pow(kT60Amplitude, materialize(feedbackDelayHelp(i, j)*materialize(materialize(size_target)/materialize(decay_samples))));
+
+    // The source uses parallel prefilters and TPT one-pole shelves.
+    // Preserve the source's intermediate state updates through normalization.
+    materialize = _ <: attach;
+    tick(c, x) = materialize(state+delta) with {
+        step(s) = materialize(materialize(s+d)+d) with { d = materialize(c*materialize(x-s)); };
+        state = (step ~ _)';
+        delta = materialize(c*materialize(x-state));
+    };
+    coefficient(freq) = tan(materialize(w/materialize(w+1))) with { w = materialize(freq*materialize(ma.PI/ma.SR)); };
+    pre_filter_mono = _ <: tick(previous(hold(coefficient(low_pre_cutoff_frequency)), 0.1)),
+                          tick(previous(hold(coefficient(high_pre_cutoff_frequency)), 0.1))
+        : - : *(0.25);
+    pre_filter = sp.stereoize(pre_filter_mono);
+    high_filter = _ <: tick(ramp(hold(coefficient(high_cutoff_frequency)), 0.1, 0)), _ : high_mix
+        with { high_mix(lp, x) = materialize(lp + materialize(ramp(hold(source_gain(high_gain)), 0, 0)*materialize(x-lp))); };
+    low_filter = _ <: tick(previous(hold(coefficient(low_cutoff_frequency)), 0.1)), _ : low_mix
+        with { low_mix(lp, x) = materialize(x - materialize(previous(hold(1-source_gain(low_gain)), 0)*lp)); };
+    catmull(d, x) = sum4(materialize(x@(j+2)*w0), materialize(x@(j+1)*w1),
+        materialize(x@j*w2), materialize(x@(j-1)*w3))
+    with {
+        bounded = max(3, min(192000, d)); j = int(bounded);
+        t = materialize(materialize(j-bounded)+1);
+        half = materialize(t*0.5); half2 = materialize(t*half); half3 = materialize(half2*t);
+        three_half3 = materialize(half3*3);
+        w0 = materialize(materialize(materialize(half2*2)-half3)-half);
+        w1 = materialize(materialize(three_half3-materialize(half2*5))+1);
+        w2 = materialize(materialize(half+materialize(half2*4))-three_half3);
+        w3 = materialize(half3-half2);
+    };
+    servo_step(d, v, a) = next_d, next_v, acceleration, current_d with {
+        current_d = select2(ba.time==0, d, 3);
+        target = materialize(current_d + materialize(0.05*materialize(max(3, hold(pre_delay_samples))-current_d)));
+        acceleration = select2(block_start, a,
+            materialize(materialize(target-materialize(current_d+materialize(v*block_size)))/(0.5*block_size*block_size))*0.05);
+        next_v = materialize(v+acceleration);
+        next_d = max(3, min(192000, materialize(current_d+next_v)));
+    };
+    smoothed_delay = (servo_step ~ si.bus(3)) : !, !, !, _;
+    pre_delay = par(i, 2, catmull(smoothed_delay) : materialize);
+
+    // A fixed source-sized control quantum also works on sample-based backends.
+    block_size = 128;
+    block_pos = ba.period(block_size);
+    block_start = block_pos == 0;
+    blocks = (+(block_start) : min(2)) ~ _;
+    hold(x) = x : ba.sAndH(block_start);
+    previous(x, initial) = select2(blocks < 2, (x' : ba.sAndH(block_start)), initial);
+    ramp(x, initial, offset) = select2(offset, before, after)
+    with {
+        old = previous(x, initial);
+        increment = (x-old)/block_size;
+        after = (select2(block_start, _, old) : +(increment)) ~ _;
+        before = select2(block_start, after', old);
+    };
+    // Hold the divisor too: the source rounds a quotient, not a reciprocal product.
+    phase_increment = hold(chorus_frequency/hold(ma.SR));
+    phase_end = (+(block_start*block_size*phase_increment) : ma.decimal) ~ _;
+    phase_start = previous(phase_end, 0);
+    rotation_c = hold(cos(materialize(phase_increment*(2*ma.PI))));
+    rotation_s = hold(sin(materialize(phase_increment*(2*ma.PI))));
+    osc(i) = step ~ (_, _) with {
+        phase = materialize(materialize(i*((2*ma.PI)/kNetworkSize)) + materialize(phase_start*(2*ma.PI)));
+        step(re, im) = next_re, next_im with {
+            re0 = select2(block_start, re, cos(phase));
+            im0 = select2(block_start, im, sin(phase));
+            next_re = materialize(materialize(re0*rotation_c) - materialize(im0*rotation_s));
+            next_im = materialize(materialize(im0*rotation_c) + materialize(next_re*rotation_s));
+        };
+    };
+    lfo1(i) = osc(i) : _, !;
+    lfo2(i) = osc(i) : !, _;
+
+    // Read the fractional position on the source buffer clock, after rounding
+    // the modulated offset. Subtracting its terms separately changes the taps.
+    mydelay(d, x) = sum4(materialize(x@j*w0), materialize(x@(j-1)*w1),
+        materialize(x@(j-2)*w2), materialize(x@(j-3)*w3))
+    with {
+        pos = ba.period(int(pow(2, 14+kMaxSizePower)*buffer_scale));
+        read_pos = materialize(float(pos)-materialize(d));
+        base = floor(read_pos);
+        t = materialize(read_pos-base);
+        j = int(max(3, min(kFeedbackMaxDelay, pos-base-1)));
+        prev = materialize(t+1); to = materialize(t-1); next = materialize(t-2);
+        prev_from = materialize(prev*t); to_next = materialize(to*next);
+        w0 = materialize(materialize(t*to_next)*(-1.0/6));
+        w1 = materialize(materialize(prev*to_next)*0.5);
+        w2 = materialize(materialize(prev_from*next)*(-0.5));
+        w3 = materialize(materialize(prev_from*to)*(1.0/6));
+    };
+
+    chorus_drift(i) = (select2(block_start, _, materialize(old*size_mult)) : +(increment)) ~ _
+    with { target = hold(chorus_amount(i)); old = previous(target, 0); increment = (target-old)/block_size; };
+    delay = par(i, kContainerSize, mydelay(feedbackDelay(0, i) + lfo1(i)*chorus_drift(i))),
+            par(i, kContainerSize, mydelay(feedbackDelay(1, i) - lfo1(i)*chorus_drift(i))),
+            par(i, kContainerSize, mydelay(feedbackDelay(2, i) + lfo2(i)*chorus_drift(i))),
+            par(i, kContainerSize, mydelay(feedbackDelay(3, i) - lfo2(i)*chorus_drift(i)));
+
+    // Interleaved source reads exchange stereo lanes and add one sample
+    // through the recursive connection. Input enters the delay memory only.
+    allpass_delays = par(j, kNetworkContainers,
+        par(i, kContainerSize, de.delay(kAllpassMaxDelay, int(allpassDelay(j, i)*buffer_scale))))
+        : par(i, kNetworkSize/2, ro.crossnn(1));
+    branch(c, r, u) = materialize(u+v), materialize(c+materialize(kAllpassFeedback*v))
+    with { v = materialize(r-materialize(kAllpassFeedback*c)); };
+    diffuser_step = (allpass_delays, networkBus, networkBus)
+        : ro.interleave(kNetworkSize, 3) : par(i, kNetworkSize, branch)
+        : ro.interleave(2, kNetworkSize);
+    diffusers = (diffuser_step ~ networkBus) : si.block(kNetworkSize), networkBus;
+    filters = par(i, kNetworkSize, high_filter : low_filter);
+
+    sum4(a, b, c, d) = materialize(materialize(materialize(a+b)+c)+d);
+    sum_pairs(a, b, c, d) = materialize(materialize(a+b)+materialize(c+d));
+    total_rows = ro.interleave(4, 4) : par(i, 4, sum4);
+    other_feedback = total_rows <: (sum_pairs : *(0.25) <: containerBus),
+        par(i, 4, *(-0.5)) :> containerBus : par(i, 4, materialize) <: networkBus;
+    adjacent_feedback = par(i, 4, sum4 : *(-0.5) : materialize <: containerBus);
+    matrix = networkBus <: networkBus, other_feedback, adjacent_feedback
+        : ro.interleave(kNetworkSize, 3) : par(i, kNetworkSize, matrix_mix)
+    with { matrix_mix(x, o, a) = materialize(materialize(o+x)+a); };
+    decay = par(i, kNetworkContainers, par(j, kContainerSize, _*ramp(hold(getDecay(i, j)), 0, 1) : materialize));
+
+    // Include the source's second matrix pass in the output, before predelay.
+    readout = networkBus <: total_rows, (decay : matrix : decay : total_rows)
+        : ro.interleave(4, 2) : par(i, 4, output_mix) :> si.bus(2) : par(i, 2, materialize)
+    with { output_mix(x, f) = materialize(x+materialize(0.125*f)); };
+    core = (delay, (pre_filter <: networkBus)) : diffusers : matrix : filters <: decay, readout;
+    reverb = (core ~ networkBus) : si.block(kNetworkSize), si.bus(2) : pre_delay;
+    fade(t) = q*(0.776 + 0.224*abs(q)) with { z = 0.5-0.25*t; q = z*(8-16*abs(z)); };
+    mix = si.bus(2) <: sp.stereoize(*(ramp(hold(fade(1+wetAmount)), 0, 0))),
+        (reverb : sp.stereoize(*(ramp(hold(fade(wetAmount)), 0, 0)))) :> si.bus(2);
+};
+
+
+declare vital_rev author "David Braun";
+declare vital_rev license "GPL-3.0-only";
