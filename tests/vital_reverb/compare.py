@@ -188,8 +188,11 @@ def characterize(y, reference, rate):
 
 
 def main():
+    global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("vital_source", type=Path)
+    parser.add_argument("--library-root", type=Path, default=ROOT,
+                        help="Faust libraries checkout to characterize (default: this research snapshot)")
     parser.add_argument("--faust", default=os.environ.get("FAUST", "faust"))
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     parser.add_argument("--faust-include", type=Path)
@@ -198,6 +201,9 @@ def main():
     parser.add_argument("--require-exact", action="store_true", help="fail on any reference float-bit difference")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    ROOT = args.library_root.resolve()
+    if not (ROOT / "stdfaust.lib").is_file():
+        parser.error("--library-root must contain stdfaust.lib")
     executable = shutil.which(args.faust)
     if executable is None:
         parser.error("Faust not found; set FAUST or use --faust")

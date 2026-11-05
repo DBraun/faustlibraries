@@ -5,13 +5,11 @@ source's 128-sample controls, float approximations, interpolation clock and
 intermediate rounding. Its `materialize = _ <: attach` helper requests a shared
 intermediate without duplicating the expression during box evaluation.
 
-The public `re.vital_rev` keeps the network and filter design while accepting
-parameter signals directly. It uses ordinary mathematical functions, a continuous
-chorus oscillator, and predelay motion with a 4.2 Hz Butterworth response in time.
-Its demo supplies raw sliders. Diffuser durations scale in seconds instead of
-following the source's power-of-two buffer sizes. This deliberately changes the
-tuning above 44.1 kHz; the reference retains the original scaling. The NumPy/SciPy
-feedback matrix derivation is retained in the public function's documentation.
+This research branch retains the frozen comparison outside the upstream library's
+normal checks. Use `--library-root` to characterize a current Faust libraries
+checkout; otherwise the comparison uses this branch's historical snapshot.
+The public implementation deliberately differs in control handling and delay
+scaling. Its results are reported separately from exact reference equality.
 
 ## Optional native comparison
 
@@ -24,6 +22,7 @@ From the repository root:
 
 ```sh
 FAUST=/path/to/faust python3 tests/vital_reverb/compare.py /path/to/vital \
+    --library-root /path/to/faustlibraries \
     --require-exact --output tests/build/vital/comparison.json
 ```
 
